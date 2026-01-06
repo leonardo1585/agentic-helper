@@ -1,0 +1,484 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #f8f9fa;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f0f2f5;
+  --border-color: #e5e7eb;
+  --text-primary: #1a1a2e;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --accent-primary: #00DED2;
+  --accent-secondary: #7c3aed;
+  --accent-gradient: linear-gradient(135deg, #00DED2 0%, #7c3aed 100%);
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Weni-style Button */
+.btn-primary {
+  @apply px-5 py-2.5 rounded-lg font-medium text-sm transition-all duration-200;
+  background: var(--accent-primary);
+  color: #1a1a2e;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 222, 210, 0.25);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-secondary {
+  @apply px-5 py-2.5 rounded-lg font-medium text-sm transition-all duration-200;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.btn-secondary:hover {
+  background: var(--bg-tertiary);
+  border-color: #d1d5db;
+}
+
+.btn-ghost {
+  @apply px-3 py-2 rounded-lg font-medium text-sm transition-all duration-200;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.btn-ghost:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* Weni-style Card */
+.card {
+  @apply rounded-xl p-5;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* Weni-style Input */
+.input {
+  @apply w-full px-4 py-2.5 rounded-lg text-sm outline-none transition-all duration-200;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(0, 222, 210, 0.15);
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Weni-style Select */
+.select {
+  @apply w-full px-4 py-2.5 rounded-lg text-sm outline-none transition-all duration-200 cursor-pointer;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.select:focus {
+  border-color: var(--accent-primary);
+}
+
+/* Weni-style Checkbox */
+.checkbox {
+  @apply w-5 h-5 rounded cursor-pointer appearance-none transition-all duration-200;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-color);
+}
+
+.checkbox:checked {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  background-image: url("data:image/svg+xml,%3csvg viewBox='0 0 16 16' fill='%231a1a2e' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z'/%3e%3c/svg%3e");
+}
+
+/* Weni-style Badge */
+.badge {
+  @apply px-2.5 py-1 rounded-full text-xs font-medium;
+}
+
+.badge-teal {
+  background: rgba(0, 222, 210, 0.15);
+  color: #00a89d;
+}
+
+.badge-purple {
+  background: rgba(124, 58, 237, 0.15);
+  color: #7c3aed;
+}
+
+.badge-blue {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+}
+
+.badge-orange {
+  background: rgba(245, 158, 11, 0.15);
+  color: #d97706;
+}
+
+.badge-gray {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+/* Sidebar styles */
+.sidebar {
+  width: 260px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
+  height: 100vh;
+  position: fixed;
+  left: 0;
+  top: 0;
+}
+
+.sidebar-item {
+  @apply flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer;
+  color: var(--text-secondary);
+}
+
+.sidebar-item:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.sidebar-item.active {
+  background: rgba(0, 222, 210, 0.1);
+  color: var(--accent-primary);
+}
+
+.sidebar-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 24px;
+  background: var(--accent-primary);
+  border-radius: 0 2px 2px 0;
+}
+
+/* Main content area */
+.main-content {
+  margin-left: 260px;
+  min-height: 100vh;
+  padding: 24px 32px;
+}
+
+/* Page header */
+.page-header {
+  @apply mb-6;
+}
+
+.page-title {
+  @apply text-2xl font-semibold mb-1;
+  color: var(--text-primary);
+}
+
+.page-subtitle {
+  @apply text-sm;
+  color: var(--text-secondary);
+}
+
+/* Search bar */
+.search-container {
+  @apply relative;
+}
+
+.search-icon {
+  @apply absolute left-3 top-1/2 -translate-y-1/2;
+  color: var(--text-muted);
+}
+
+.search-input {
+  @apply pl-10 pr-4 py-2.5 rounded-lg text-sm w-full;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(0, 222, 210, 0.15);
+}
+
+/* Repository card - Weni style */
+.repo-card {
+  @apply rounded-xl p-4 transition-all duration-200 cursor-pointer;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.repo-card:hover {
+  border-color: var(--accent-primary);
+  box-shadow: 0 4px 12px rgba(0, 222, 210, 0.1);
+}
+
+.repo-card.selected {
+  border-color: var(--accent-primary);
+  background: rgba(0, 222, 210, 0.05);
+}
+
+/* Tags/Chips */
+.tag {
+  @apply inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+/* Tabs - Weni style */
+.tabs {
+  @apply flex gap-1 p-1 rounded-lg;
+  background: var(--bg-tertiary);
+}
+
+.tab {
+  @apply px-4 py-2 rounded-md text-sm font-medium transition-all duration-200;
+  color: var(--text-secondary);
+}
+
+.tab:hover {
+  color: var(--text-primary);
+}
+
+.tab.active {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Progress bar */
+.progress-bar {
+  @apply h-1.5 rounded-full overflow-hidden;
+  background: var(--bg-tertiary);
+}
+
+.progress-fill {
+  @apply h-full rounded-full transition-all duration-300;
+  background: var(--accent-primary);
+}
+
+/* Modal overlay */
+.modal-overlay {
+  @apply fixed inset-0 z-50 flex items-center justify-center p-4;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  @apply rounded-2xl overflow-hidden;
+  background: var(--bg-secondary);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+  max-width: 560px;
+  width: 100%;
+}
+
+/* Toggle switch - Weni style */
+.toggle {
+  @apply relative inline-flex h-6 w-11 items-center rounded-full cursor-pointer transition-colors duration-200;
+  background: var(--border-color);
+}
+
+.toggle.active {
+  background: var(--accent-primary);
+}
+
+.toggle-thumb {
+  @apply h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200;
+  transform: translateX(4px);
+}
+
+.toggle.active .toggle-thumb {
+  transform: translateX(24px);
+}
+
+/* Chat message styles */
+.chat-message {
+  @apply p-4 rounded-xl max-w-[85%];
+}
+
+.chat-message.user {
+  background: var(--accent-primary);
+  color: var(--text-primary);
+  margin-left: auto;
+}
+
+.chat-message.assistant {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* Markdown content styling */
+.markdown-content {
+  @apply leading-relaxed text-sm;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3 {
+  @apply font-semibold mt-4 mb-2;
+  color: var(--text-primary);
+}
+
+.markdown-content h1 {
+  @apply text-xl;
+}
+
+.markdown-content h2 {
+  @apply text-lg;
+}
+
+.markdown-content h3 {
+  @apply text-base;
+}
+
+.markdown-content p {
+  @apply mb-3;
+  color: var(--text-secondary);
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  @apply ml-5 mb-3;
+}
+
+.markdown-content li {
+  @apply mb-1;
+  color: var(--text-secondary);
+}
+
+.markdown-content code {
+  @apply font-mono text-xs px-1.5 py-0.5 rounded;
+  background: var(--bg-tertiary);
+  color: var(--accent-primary);
+}
+
+.markdown-content pre {
+  @apply rounded-lg p-4 mb-4 overflow-x-auto text-xs;
+  background: #1a1a2e;
+  color: #e5e7eb;
+}
+
+.markdown-content pre code {
+  @apply p-0;
+  background: transparent;
+  color: inherit;
+}
+
+/* Loading spinner */
+.spinner {
+  @apply animate-spin h-5 w-5;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+}
+
+/* Empty state */
+.empty-state {
+  @apply text-center py-12;
+}
+
+.empty-state-icon {
+  @apply w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+}
+
+.empty-state-title {
+  @apply text-lg font-semibold mb-2;
+  color: var(--text-primary);
+}
+
+.empty-state-description {
+  @apply text-sm max-w-md mx-auto;
+  color: var(--text-secondary);
+}
+
+/* Tooltip */
+.tooltip {
+  @apply absolute z-50 px-2 py-1 text-xs rounded shadow-lg;
+  background: var(--text-primary);
+  color: var(--bg-secondary);
+}
+
+/* Animation utilities */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { 
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out;
+}
