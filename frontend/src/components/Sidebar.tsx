@@ -1,15 +1,13 @@
 import { motion } from 'framer-motion';
 import { 
-  Database, 
   Settings,
   Sparkles,
   Search,
-  Bug,
-  FolderGit2,
-  Bot
+  HelpCircle,
+  MessageCircleQuestion
 } from 'lucide-react';
 
-type TabType = 'agents' | 'repos' | 'knowledge' | 'finder' | 'debug';
+type TabType = 'finder' | 'debug';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -17,43 +15,17 @@ interface SidebarProps {
   onOpenSettings: () => void;
 }
 
-interface MenuSection {
-  title: string;
-  items: {
-    id: TabType;
-    label: string;
-    icon: React.ComponentType<{ className?: string }>;
-    description?: string;
-  }[];
+interface MenuItem {
+  id: TabType;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  description?: string;
 }
 
 export function Sidebar({ activeTab, onTabChange, onOpenSettings }: SidebarProps) {
-  const menuSections: MenuSection[] = [
-    {
-      title: 'Principal',
-      items: [
-        { id: 'agents', label: 'Agentes', icon: Bot, description: 'Gerenciar agentes e tools' },
-      ]
-    },
-    {
-      title: 'Repositórios',
-      items: [
-        { id: 'repos', label: 'Gerenciar', icon: FolderGit2, description: 'Análise, Updates, Diagnóstico' },
-        { id: 'finder', label: 'Buscar Agente', icon: Search, description: 'Encontrar existentes' },
-      ]
-    },
-    {
-      title: 'Conhecimento',
-      items: [
-        { id: 'knowledge', label: 'Base de Conhecimento', icon: Database, description: 'Visualizar KBs' },
-      ]
-    },
-    {
-      title: 'Análise',
-      items: [
-        { id: 'debug', label: 'Debug', icon: Bug, description: 'Analisar código atual' },
-      ]
-    }
+  const menuItems: MenuItem[] = [
+    { id: 'debug', label: 'Tirar Dúvidas', icon: MessageCircleQuestion, description: 'Diagnóstico e análise de problemas' },
+    { id: 'finder', label: 'Buscar Agente', icon: Search, description: 'Encontrar agentes existentes' },
   ];
 
   return (
@@ -83,52 +55,53 @@ export function Sidebar({ activeTab, onTabChange, onOpenSettings }: SidebarProps
 
       {/* Navigation */}
       <nav className="flex-1 p-4 overflow-y-auto">
-        <div className="space-y-6">
-          {menuSections.map((section) => (
-            <div key={section.title}>
-              {/* Section Title */}
-              <h3 className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-2 px-3">
-                {section.title}
-              </h3>
-              
-              {/* Section Items */}
-              <div className="space-y-1">
-                {section.items.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = activeTab === item.id;
+        <div className="space-y-2">
+          {menuItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
 
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => onTabChange(item.id)}
-                      className={`w-full relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${
-                        isActive 
-                          ? 'bg-[#00DED2]/10 text-[#00DED2]' 
-                          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                      }`}
-                    >
-                      {isActive && (
-                        <motion.div
-                          layoutId="activeIndicator"
-                          className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 bg-[#00DED2] rounded-r"
-                          transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                        />
-                      )}
-                      <Icon className={`w-4 h-4 ${isActive ? 'text-[#00DED2]' : ''}`} />
-                      <div className="flex-1 text-left">
-                        <span className={`font-medium ${isActive ? 'text-[#00DED2]' : ''}`}>
-                          {item.label}
-                        </span>
-                        {item.description && (
-                          <p className="text-[10px] text-gray-400 mt-0.5">{item.description}</p>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+            return (
+              <button
+                key={item.id}
+                onClick={() => onTabChange(item.id)}
+                className={`w-full relative flex items-center gap-3 px-3 py-3 rounded-xl text-sm transition-all duration-200 ${
+                  isActive 
+                    ? 'bg-[#00DED2]/10 text-[#00DED2]' 
+                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                }`}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="activeIndicator"
+                    className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-8 bg-[#00DED2] rounded-r"
+                    transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                  />
+                )}
+                <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                  isActive ? 'bg-[#00DED2]/20' : 'bg-gray-100'
+                }`}>
+                  <Icon className={`w-5 h-5 ${isActive ? 'text-[#00DED2]' : 'text-gray-500'}`} />
+                </div>
+                <div className="flex-1 text-left">
+                  <span className={`font-medium ${isActive ? 'text-[#00DED2]' : ''}`}>
+                    {item.label}
+                  </span>
+                  {item.description && (
+                    <p className="text-[10px] text-gray-400 mt-0.5">{item.description}</p>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        
+        {/* Help section */}
+        <div className="mt-8 p-4 rounded-xl bg-gradient-to-br from-[#00DED2]/5 to-cyan-50 border border-[#00DED2]/10">
+          <HelpCircle className="w-6 h-6 text-[#00DED2] mb-2" />
+          <h4 className="text-sm font-medium text-gray-800 mb-1">Precisa de ajuda?</h4>
+          <p className="text-xs text-gray-500">
+            Use "Tirar Dúvidas" para diagnóstico de problemas ou "Buscar Agente" para encontrar agentes.
+          </p>
         </div>
       </nav>
 

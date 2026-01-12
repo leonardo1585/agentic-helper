@@ -1,19 +1,6 @@
-export { Header } from './Header';
+// v3 - Versão enxuta focada em tirar dúvidas
 export { Sidebar } from './Sidebar';
 export { SettingsModal } from './SettingsModal';
-export { RepositoryList } from './RepositoryList';
-export { KnowledgeBasePanel } from './KnowledgeBasePanel';
-export { ChatPanel } from './ChatPanel';
-export { FolderSelectModal } from './FolderSelectModal';
-export { MultiFolderSelectModal } from './MultiFolderSelectModal';
 export { AgentFinder } from './AgentFinder';
-export { IndexPanel } from './IndexPanel';
 export { DebugPanel } from './DebugPanel';
-export { PromptAdmin } from './PromptAdmin';
-export { AdminDashboard } from './AdminDashboard';
-export { AgentsView } from './AgentsView';
-export { WeniProjectSelector } from './WeniProjectSelector';
-export { WebChat } from './WebChat';
-export { UpdatesDiffPanel } from './UpdatesDiffPanel';
-export { DiagnosticPanel } from './DiagnosticPanel';
 export { TicketView } from './TicketView';

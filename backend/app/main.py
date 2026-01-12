@@ -1,6 +1,6 @@
 """
-GTH - Git Helper Tool
-Aplicação principal FastAPI.
+GTH - Git Helper Tool v3
+Versão enxuta focada em tirar dúvidas.
 """
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -16,10 +16,6 @@ from .routers import (
     analysis_router, 
     search_router, 
     prompts_router, 
-    admin_router,
-    projects_router,
-    tools_router,
-    weni_router,
 )
 
 
@@ -65,16 +61,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Registra routers da API
+# Registra routers da API (v3 - versão enxuta)
 app.include_router(config_router, prefix="/api")
 app.include_router(repositories_router, prefix="/api")
 app.include_router(analysis_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
 app.include_router(prompts_router, prefix="/api")
-app.include_router(admin_router, prefix="/api")
-app.include_router(projects_router, prefix="/api")
-app.include_router(tools_router, prefix="/api")
-app.include_router(weni_router, prefix="/api")
 
 
 # Serve frontend estático se existir o build
