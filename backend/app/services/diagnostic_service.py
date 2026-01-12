@@ -566,10 +566,12 @@ class DiagnosticService:
                         deletions=deletions
                     ))
             
-            print(f"📡 Obtidos {len(commits)} commits do GitHub (últimos {days} dias)")
+            print(f"✅ Obtidos {len(commits)} commits do GitHub (últimos {days} dias)")
             
         except Exception as e:
-            print(f"Erro ao obter commits do GitHub: {e}")
+            print(f"❌ Erro ao obter commits do GitHub: {e}")
+            import traceback
+            traceback.print_exc()
         
         return commits
     
@@ -718,8 +720,24 @@ class DiagnosticService:
     ) -> DiagnosticResult:
         """
         Diagnostica um problema e analisa correlação com mudanças recentes.
-        Usa API do GitHub diretamente - não depende do repositório local!
+        Usa API do GitHub diretamente - NÃO usa fallback local!
         """
+        from .github_service import github_service
+        
+        # Verifica se o token do GitHub está configurado
+        if not settings.GITHUB_TOKEN:
+            return DiagnosticResult(
+                repository_name=request.repository_name,
+                problem_description=request.problem_description,
+                analyzed_at=datetime.now(),
+                diagnosis_summary="⚠️ Token do GitHub não configurado! O diagnóstico requer acesso à API do GitHub para buscar commits atualizados.",
+                confidence='low',
+                recommendations=[
+                    "Configure a variável GITHUB_TOKEN no arquivo .env do backend",
+                    "O token precisa ter permissão de leitura em repositórios"
+                ]
+            )
+        
         # Parse do nome do repositório
         owner, repo, folder = self._parse_repository_name(request.repository_name)
         
@@ -733,7 +751,8 @@ class DiagnosticService:
                 recommendations=["O formato esperado é: owner/repo ou owner/repo/folder"]
             )
         
-        # Obtém commits recentes direto do GitHub (não precisa de git pull!)
+        # Obtém commits recentes DIRETAMENTE do GitHub (sem fallback local!)
+        print(f"📡 Buscando commits do GitHub: {owner}/{repo}" + (f"/{folder}" if folder else ""))
         commits = await self._get_recent_commits_from_github(
             owner=owner,
             repo=repo,
@@ -741,22 +760,20 @@ class DiagnosticService:
             folder=folder
         )
         
-        # Fallback para repositório local se GitHub falhar
-        if not commits:
-            repo_path = self._get_repo_path(request.repository_name)
-            if repo_path:
-                print("⚠️ Fallback para repositório local")
-                commits = self._get_recent_commits(repo_path, days=request.days_lookback)
-        
+        # NÃO usa fallback local - se GitHub falhar, retorna erro claro
         if not commits:
             return DiagnosticResult(
                 repository_name=request.repository_name,
                 problem_description=request.problem_description,
                 analyzed_at=datetime.now(),
-                diagnosis_summary="Nenhum commit encontrado no período especificado.",
+                diagnosis_summary=f"Nenhum commit encontrado no GitHub para {owner}/{repo}" + (f"/{folder}" if folder else "") + f" nos últimos {request.days_lookback} dias.",
                 confidence='low',
                 recent_commits=[],
-                recommendations=["Verifique se há commits no repositório ou aumente o período de busca."]
+                recommendations=[
+                    "Verifique se o repositório existe no GitHub",
+                    "Verifique se o token tem acesso ao repositório",
+                    "Aumente o período de busca (days_lookback)"
+                ]
             )
         
         # Categoriza as mudanças
