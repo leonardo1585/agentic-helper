@@ -2,7 +2,7 @@
 Schemas Pydantic para validação de dados.
 """
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Any, Dict
 from enum import Enum
 from datetime import datetime
 
@@ -66,7 +66,7 @@ class APIEndpoint(BaseModel):
     method: str  # GET, POST, PUT, DELETE, etc.
     path: str
     description: str
-    parameters: List[str] = []
+    parameters: List[Any] = []  # Pode ser string ou dict com name/type/description
     response_type: Optional[str] = None
 
 
@@ -184,6 +184,12 @@ class TechnicalKnowledgeBase(BaseModel):
     """Base de conhecimento técnica - para desenvolvedores e agentes de IA."""
     repository_name: str
     
+    # Definição do Agente (extraído do agent_definition.yaml)
+    agent_instructions: List[str] = []  # Instructions do agent_definition
+    agent_guardrails: List[str] = []    # Guardrails do agent_definition
+    agent_name: str = ""                # Nome do agente
+    agent_description: str = ""         # Descrição do agente
+    
     # Visão Geral Técnica
     technical_summary: str = ""
     architecture_diagram: str = ""  # Descrição textual da arquitetura
@@ -218,7 +224,7 @@ class TechnicalKnowledgeBase(BaseModel):
     naming_conventions: List[str] = []
     
     # Configurações
-    environment_variables: List[str] = []
+    environment_variables: List[Any] = []  # Pode ser string ou dict com name/purpose
     configuration_files: List[str] = []
     
     # Webhooks
@@ -356,6 +362,8 @@ class PromptCategory(str, Enum):
     CHAT = "chat"                              # Chat/Conversação
     DEBUG = "debug"                            # Debug de problemas
     SEARCH = "search"                          # Busca de agentes
+    AGENT_CREATION = "agent_creation"          # Criação/edição de agentes (YAML)
+    TOOL_GENERATION = "tool_generation"        # Geração de código de tools
     CUSTOM = "custom"                          # Customizado
 
 
@@ -501,3 +509,230 @@ class AnalysisHistory(BaseModel):
     successful: int
     failed: int
     records: List[AnalysisRecord]
+
+
+# ============================================
+# DIFF DE ATUALIZAÇÕES (PARA CS)
+# ============================================
+
+class IndexationSnapshot(BaseModel):
+    """Snapshot de uma indexação para comparação posterior."""
+    id: str
+    repository_name: str
+    timestamp: datetime
+    indexed_by: str = "system"  # Quem fez a indexação
+    
+    # Snapshot do conteúdo
+    instructions: List[str] = []
+    guardrails: List[str] = []
+    skills: List[str] = []  # Nomes das skills
+    handlers: List[str] = []  # Nomes dos handlers
+    environment_variables: List[str] = []
+    api_endpoints: List[str] = []  # Resumo dos endpoints
+    business_rules: List[str] = []
+    capabilities: List[str] = []  # Capacidades de negócio
+    
+    # Hash do conteúdo para detecção rápida de mudanças
+    content_hash: str = ""
+
+
+class CrossReference(BaseModel):
+    """Referência cruzada - onde uma variável/chave é usada."""
+    file_path: str
+    line_number: int
+    line_content: str
+    context: Optional[str] = None  # Linhas ao redor para contexto
+
+
+class ChangeItem(BaseModel):
+    """Item de mudança detectada."""
+    type: str  # 'added', 'removed', 'modified'
+    category: str  # 'instruction', 'guardrail', 'skill', 'handler', 'env_var', 'endpoint', 'rule', 'capability'
+    description: str
+    old_value: Optional[str] = None
+    new_value: Optional[str] = None
+    impact: str = "low"  # 'low', 'medium', 'high'
+    # Detalhes do diff (do GitHub)
+    additions: int = 0  # Linhas adicionadas
+    deletions: int = 0  # Linhas removidas
+    patch: Optional[str] = None  # Diff do arquivo (preview)
+    # Referências cruzadas - onde variáveis removidas são usadas
+    removed_identifiers: List[str] = []  # Variáveis/chaves REALMENTE removidas
+    format_changed_identifiers: List[str] = []  # Variáveis com MUDANÇA DE FORMATO (não são remoções reais)
+    cross_references: List[CrossReference] = []  # Onde são usadas
+    has_breaking_change: bool = False  # Se tem variável removida usada em outro lugar
+    has_format_change: bool = False  # Se tem mudança de formato de dados
+
+
+class UpdatesDiff(BaseModel):
+    """Diferença entre duas indexações."""
+    repository_name: str
+    from_snapshot_id: str
+    from_timestamp: datetime
+    to_snapshot_id: str
+    to_timestamp: datetime
+    
+    # Resumo das mudanças
+    summary: str
+    total_changes: int
+    
+    # Mudanças por categoria
+    changes: List[ChangeItem] = []
+    
+    # Mudanças agrupadas
+    instructions_changes: List[ChangeItem] = []
+    code_changes: List[ChangeItem] = []
+    config_changes: List[ChangeItem] = []
+    
+    # Impacto geral
+    impact_level: str = "low"  # 'low', 'medium', 'high', 'critical'
+    impact_summary: str = ""
+    
+    # Análise inteligente da IA
+    ai_analysis: Optional[str] = None  # Resumo técnico/negócio das mudanças
+    potential_issues: List[str] = []  # Possíveis problemas identificados
+    
+    # Commits entre os snapshots
+    from_commit_sha: Optional[str] = None
+    to_commit_sha: Optional[str] = None
+
+
+# ============================================
+# DIAGNÓSTICO DE PROBLEMAS
+# ============================================
+
+class FileChange(BaseModel):
+    """Mudança em um arquivo específico."""
+    filename: str
+    status: str = "modified"  # added, removed, modified
+    additions: int = 0
+    deletions: int = 0
+    patch: Optional[str] = None  # O diff real do arquivo
+
+
+class CommitInfo(BaseModel):
+    """Informações de um commit."""
+    sha: str
+    message: str
+    author: str
+    date: datetime
+    files_changed: List[str] = []
+    file_details: List[FileChange] = []  # Detalhes incluindo patches
+    additions: int = 0
+    deletions: int = 0
+
+
+class DiagnosticRequest(BaseModel):
+    """Requisição de diagnóstico de problema."""
+    repository_name: str
+    problem_description: str
+    error_message: Optional[str] = None
+    expected_behavior: Optional[str] = None
+    actual_behavior: Optional[str] = None
+    days_lookback: int = 7  # Quantos dias olhar para trás
+
+
+class ProblemCorrelation(BaseModel):
+    """Correlação entre problema e uma mudança."""
+    change_type: str  # 'instruction', 'code', 'config', 'dependency'
+    change_description: str
+    file_or_location: str
+    commit_sha: Optional[str] = None
+    commit_date: Optional[datetime] = None
+    commit_author: Optional[str] = None
+    correlation_score: float  # 0 a 1, quanto maior mais provável ser a causa
+    reasoning: str  # Explicação de por que pode ser relacionado
+
+
+class CodeLocation(BaseModel):
+    """Localização exata do código problemático."""
+    file: str
+    line_removed: Optional[str] = None  # Código removido (linha com -)
+    line_added: Optional[str] = None  # Código adicionado (linha com +)
+    explanation: Optional[str] = None  # Por que essa mudança causou o problema
+
+
+class DiagnosticResult(BaseModel):
+    """Resultado do diagnóstico de problema."""
+    repository_name: str
+    problem_description: str
+    analyzed_at: datetime
+    
+    # VEREDITO PRINCIPAL
+    found_cause: bool = False  # Se encontrou uma causa relacionada às mudanças
+    is_refactoring: bool = False  # Se foi apenas refatoração (funcionalidade mantida, não é problema real)
+    verdict: str = ""  # Veredito claro: "CAUSA ENCONTRADA: ..." ou "REFATORAÇÃO: ..." ou "NÃO ENCONTREI RELAÇÃO..."
+    
+    # Resumo do diagnóstico
+    diagnosis_summary: str
+    confidence: str  # 'low', 'medium', 'high'
+    
+    # Causa raiz identificada
+    root_cause: Optional[str] = None
+    root_cause_type: Optional[str] = None  # 'instruction', 'code', 'config', 'external', 'unknown'
+    
+    # LOCALIZAÇÃO EXATA DO CÓDIGO PROBLEMÁTICO
+    code_location: Optional[CodeLocation] = None
+    
+    # Correlações encontradas
+    correlations: List[ProblemCorrelation] = []
+    
+    # Top 3 possíveis causas
+    top_suspects: List[str] = []
+    
+    # Commits recentes analisados
+    recent_commits: List[CommitInfo] = []
+    
+    # Mudanças em instruções (agent_definition)
+    instruction_changes: List[str] = []
+    
+    # Mudanças em código
+    code_changes: List[str] = []
+    
+    # Recomendações
+    recommendations: List[str] = []
+    
+    # Próximos passos sugeridos
+    next_steps: List[str] = []
+
+
+class DiagnosticTicket(BaseModel):
+    """Ticket de diagnóstico para compartilhamento.
+    Contém todas as informações necessárias para o time responsável investigar.
+    """
+    id: str  # ID único para compartilhamento (ex: "DBG-2024-0001")
+    created_at: datetime
+    created_by: str = "Suporte"  # Quem criou o ticket
+    status: str = "open"  # 'open', 'investigating', 'resolved', 'closed'
+    ticket_type: str = "diagnostic"  # 'diagnostic' ou 'debug'
+    
+    # Dados do diagnóstico
+    repository_name: str
+    problem_description: str
+    error_message: Optional[str] = None
+    
+    # Resultado do diagnóstico (quando ticket_type = 'diagnostic')
+    diagnosis_result: Optional[DiagnosticResult] = None
+    
+    # Resultado do debug ORIGINAL (quando ticket_type = 'debug')
+    # Preserva TODOS os dados do debug sem conversão
+    debug_result: Optional[Dict[str, Any]] = None
+    
+    # LOG DE DEBUG - Código gerado para reproduzir/investigar
+    debug_log: str = ""  # Log formatado com todas as informações
+    debug_code: Optional[str] = None  # Código de teste se aplicável
+    
+    # Arquivos relacionados
+    affected_files: List[str] = []
+    
+    # Notas adicionais
+    notes: List[str] = []
+    
+    # Link compartilhável (gerado automaticamente)
+    share_url: Optional[str] = None
+
+
+class DiagnosticHistory(BaseModel):
+    """Histórico de diagnósticos realizados."""
+    total: int = 0
+    tickets: List[DiagnosticTicket] = []

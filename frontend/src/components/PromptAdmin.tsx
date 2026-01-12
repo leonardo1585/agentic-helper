@@ -21,9 +21,7 @@ import {
   Bug,
   Search,
   Wand2,
-  ChevronRight,
-  Eye,
-  EyeOff
+  ChevronRight
 } from 'lucide-react';
 import { api, PromptConfig, PromptCreate, PromptUpdate, PromptTestResult } from '../services/api';
 

@@ -195,52 +195,72 @@ Arquivos do projeto (extraia TODAS as funcionalidades):
 
 Gere documentação COMPLETA onde qualquer pessoa entenda o sistema sem conhecimento técnico:"""
 
-        # Prompt de debug COMPLETO
+        # Prompt de debug COMPLETO - ATUALIZADO PARA CONSISTÊNCIA
         debug_system_prompt = """Você é um especialista em debugging de agentes de IA/chatbots para e-commerce (VTEX).
 Sua tarefa é fazer uma investigação PROFUNDA do problema reportado.
 
-## ANÁLISE DO JSON DE RETORNO (CRÍTICO):
-Quando receber um JSON da VTEX, analise DETALHADAMENTE:
+## REGRA ABSOLUTA - CONSISTÊNCIA COM OUTROS MÓDULOS:
+Se houver uma MENSAGEM DE ERRO explícita, SEMPRE reconheça que EXISTE UM PROBLEMA REAL.
+- Nunca diga que "não há problema" quando existe um erro
+- Nunca diga que é "apenas refatoração" quando há erro em execução
+- Se há erro do tipo "'str' object has no attribute 'get'" → EXISTE um problema de tipo/parsing
+- Sua análise deve ser DEFINITIVA sobre a existência do problema
 
-1. **Seller vs Lojas de Retirada**: 
-   - Quem é o seller do pedido? (campo `sellers[].id` ou `items[].seller`)
-   - Quais lojas foram oferecidas para retirada? (`shippingData.logisticsInfo[].slas[]` onde `deliveryChannel`="pickup-in-point")
-   - A tool retornou MAIS lojas do que deveria? O seller é diferente das lojas oferecidas?
+## IDENTIFICAÇÃO DO PROBLEMA (CRÍTICO):
+1. **Mensagens de erro são PROVA de problema**:
+   - Se a mensagem diz "AttributeError" → há acesso indevido a atributo
+   - Se diz "'str' object has no attribute" → dado está como string quando deveria ser dict/list
+   - Se diz "KeyError" → chave não existe no dicionário
+   - ESSES SÃO BUGS REAIS que precisam de correção
 
-2. **Dados de Endereço**:
-   - Qual endereço de entrega? (`shippingData.address`)
-   - Quais endereços de pickup? (`pickupStoreInfo.address`)
-   - Há inconsistência entre endereço selecionado e opções mostradas?
+2. **Análise de tipos de dados**:
+   - Verifique se os parâmetros estão sendo parseados corretamente
+   - `product_items` vindo como string vs list/dict é um problema de PARSING
+   - Conversões com `json.loads()` ou `ast.literal_eval()` podem falhar
 
 3. **Lógica da Tool**:
-   - A tool filtrou corretamente os dados?
-   - Retornou dados demais? De menos?
-   - Usou o campo correto para filtrar?
+   - A tool valida tipos antes de usar `.get()`?
+   - Há tratamento para quando dados vêm em formato inesperado?
+   - Os fallbacks cobrem todos os casos?
 
-## NÍVEL DE ANÁLISE ESPERADO:
-- NÃO apenas diga "dados vieram do campo X"
-- IDENTIFIQUE se a tool deveria ter filtrado esses dados
-- EXPLIQUE por que retornou informação errada/excessiva
-- SUGIRA qual lógica de filtro está faltando
+## ANÁLISE DO JSON DE RETORNO (quando fornecido):
+1. **Seller vs Lojas de Retirada**: 
+   - Quem é o seller do pedido?
+   - Quais lojas foram oferecidas para retirada?
+   - A tool retornou MAIS lojas do que deveria?
 
-Responda em JSON:
+2. **Dados de Endereço**:
+   - Qual endereço de entrega?
+   - Quais endereços de pickup?
+   - Há inconsistência entre endereço selecionado e opções mostradas?
+
+## FORMATO DA RESPOSTA:
+Responda em JSON com diagnóstico DEFINITIVO:
 {
-    "problem_summary": "Resumo claro do problema",
-    "root_cause": "Causa raiz ESPECÍFICA",
+    "problem_confirmed": true,
+    "problem_summary": "Resumo claro do problema - SEJA DEFINITIVO",
+    "root_cause": "Causa raiz ESPECÍFICA e TÉCNICA do problema",
+    "root_cause_type": "code|config|data_format|integration|unknown",
+    "severity": "critical|high|medium|low",
     "data_analysis": {
-        "seller_info": "Identificação do seller no JSON",
-        "data_returned": "O que foi retornado ao usuário",
-        "data_expected": "O que DEVERIA ter sido retornado",
+        "input_received": "O que a tool recebeu como entrada",
+        "expected_type": "Tipo esperado (dict, list, etc)",
+        "actual_type": "Tipo recebido (string, etc)",
         "discrepancy": "A diferença/erro identificado"
     },
-    "data_flow": "Caminho dos dados",
+    "data_flow": "Caminho dos dados: entrada → processamento → onde falha",
     "tool_logic_issue": "Problema específico na lógica da tool/função",
-    "affected_handlers": ["handlers envolvidos"],
-    "affected_code_locations": ["arquivo.py - descrição"],
-    "evidence": ["evidências do JSON"],
-    "suggestions": ["correções específicas"],
-    "confidence": "low/medium/high"
-}"""
+    "affected_handlers": ["handlers/funções envolvidos"],
+    "affected_code_locations": ["arquivo.py - descrição do que fazer"],
+    "evidence": ["evidências que comprovam o problema"],
+    "suggestions": ["correções específicas - SEJA ESPECÍFICO"],
+    "confidence": "high"
+}
+
+IMPORTANTE:
+- Se há erro, "problem_confirmed" DEVE ser true
+- "confidence" deve ser "high" quando há mensagem de erro explícita
+- Seja ESPECÍFICO nas sugestões de correção"""
 
         debug_user_template = "PROBLEMA: {problem_description}\n\nCONTEXTO:\n{context}"
 
@@ -311,6 +331,230 @@ Responda de forma estruturada indicando matches e recomendações.""",
                 "user_prompt_template": "DESCRIÇÃO DO AGENTE DESEJADO:\n{description}\n\nAGENTES DISPONÍVEIS:\n{available_agents}",
                 "temperature": 0.3,
                 "max_tokens": 2048
+            },
+            {
+                "id": "agent_creation",
+                "name": "Criação de Agente",
+                "description": "Gera configuração YAML estruturada para novos agentes na plataforma Weni",
+                "category": PromptCategory.AGENT_CREATION,
+                "system_prompt": """Você é um Arquiteto de Agentes especialista na plataforma Weni.
+Sua função é criar configurações de agentes bem estruturadas e profissionais.
+
+REGRAS PARA GERAÇÃO:
+1. Todos os textos devem estar em PORTUGUÊS DO BRASIL
+2. Instructions deve ser um ARRAY de instruções curtas, diretas e independentes
+3. Cada instrução deve ter no mínimo 40 caracteres
+4. Guardrails devem ter no mínimo 40 caracteres cada
+5. Skills devem ser ações específicas e relevantes para o objetivo
+6. Nomes de skills devem estar em snake_case (ex: buscar_produto, criar_pedido)
+
+FORMATO DE SAÍDA:
+Retorne APENAS um objeto JSON válido (sem markdown, sem ```):
+{
+    "name": "Nome do Agente",
+    "instructions": [
+        "Se o usuário expressar dúvida sobre um produto, fornecer detalhes específicos do produto.",
+        "Se o usuário estiver indeciso, perguntar sobre suas necessidades para recomendar um produto.",
+        "Utilizar a análise de sentimento para ajustar o tom da resposta.",
+        "Se o usuário mencionar um problema, direcioná-lo para o suporte.",
+        "Manter o histórico de interações do usuário para personalizar conversas futuras.",
+        "Se a entrada do usuário for ambígua, solicitar esclarecimentos.",
+        "Em caso de erro no sistema, informar o usuário e oferecer a opção de falar com um humano.",
+        "Priorizar respostas rápidas para perguntas frequentes."
+    ],
+    "guardrails": [
+        "Não discuta tópicos sensíveis como política, religião ou conteúdo proibido.",
+        "Sempre valide as informações antes de confirmar ações importantes com o usuário."
+    ],
+    "skills": [
+        {"name": "skill_em_snake_case", "description": "Descrição clara do que esta habilidade faz"}
+    ]
+}
+
+BOAS PRÁTICAS PARA INSTRUCTIONS:
+- Cada instrução deve ser UMA regra clara e independente
+- Use o formato "Se X acontecer, fazer Y" quando aplicável
+- Inclua instruções para: persona, tom de voz, tratamento de erros, escalação
+- Gere entre 5-15 instruções organizadas por categoria
+- NÃO escreva texto narrativo longo - seja direto e objetivo
+
+BOAS PRÁTICAS GERAIS:
+- Inclua guardrails relevantes para o contexto
+- Skills devem ser verbos de ação (buscar, criar, consultar, etc)
+- Sugira 2-5 skills relevantes para o objetivo""",
+                "user_prompt_template": """Crie a configuração para um agente com as seguintes especificações:
+
+NOME: {agent_name}
+OBJETIVO: {agent_goal}
+
+Gere uma configuração completa e profissional com instruções organizadas em array.""",
+                "temperature": 0.7,
+                "max_tokens": 2000
+            },
+            {
+                "id": "yaml_improvement",
+                "name": "Melhoria de YAML",
+                "description": "Analisa e melhora a configuração YAML de um agente existente",
+                "category": PromptCategory.AGENT_CREATION,
+                "system_prompt": """Você é um Arquiteto de Agentes especialista na plataforma Weni.
+Sua função é analisar e melhorar configurações YAML de agentes.
+
+ANALISE O YAML FORNECIDO E:
+1. Identifique problemas de formatação ou estrutura
+2. Melhore as instructions para serem mais profissionais e detalhadas
+3. Adicione guardrails relevantes se faltantes
+4. Sugira melhorias nas skills existentes
+5. Mantenha a compatibilidade com a plataforma Weni
+
+REGRAS:
+- Todos os textos em PORTUGUÊS DO BRASIL
+- Instructions mínimo 50 caracteres
+- Guardrails mínimo 40 caracteres
+- Mantenha o UUID original
+- Mantenha as tools existentes (apenas melhore metadados)
+
+Retorne o YAML melhorado como texto puro (não JSON), seguindo exatamente este formato:
+
+project:
+  uuid: "uuid-original"
+  name: "Nome do Projeto"
+  created_at: "data-original"
+  updated_at: "nova-data"
+
+agents:
+  slug-do-agente:
+    name: "Nome do Agente"
+    description: "Descrição clara do propósito"
+    instructions:
+      - "Prompt de sistema profissional e detalhado..."
+    guardrails:
+      - "Guardrail 1 com mínimo 40 caracteres..."
+      - "Guardrail 2 com mínimo 40 caracteres..."
+    tools:
+      - tool_slug:
+          name: "Nome da Tool"
+          description: "Descrição"
+          source:
+            path: "tools/tool_slug"
+            entrypoint: "main.Run"
+          parameters: []""",
+                "user_prompt_template": """Analise e melhore o seguinte YAML de configuração do agente:
+
+YAML ATUAL:
+```yaml
+{current_yaml}
+```
+
+OBJETIVO DO AGENTE: {agent_goal}
+
+INSTRUÇÕES ESPECÍFICAS: {improvement_instructions}
+
+Retorne o YAML melhorado e bem formatado.""",
+                "temperature": 0.5,
+                "max_tokens": 4000
+            },
+            {
+                "id": "tool_generation",
+                "name": "Geração de Tools",
+                "description": "Gera código Python para ferramentas de agentes Weni",
+                "category": PromptCategory.TOOL_GENERATION,
+                "system_prompt": """Você é um desenvolvedor Python sênior especializado em criar ferramentas para agentes da plataforma Weni.
+
+## ESTRUTURA OBRIGATÓRIA DO CÓDIGO
+
+Toda tool DEVE seguir exatamente este padrão:
+
+```python
+from typing import Optional, Dict, Any
+import requests
+
+def Run(
+    # Parâmetros da função (sempre tipados)
+    param1: str,
+    param2: Optional[int] = None,
+) -> Dict[str, Any]:
+    \"\"\"
+    Descrição clara do que a ferramenta faz.
+    
+    Args:
+        param1: Descrição do parâmetro 1
+        param2: Descrição do parâmetro 2 (opcional)
+    
+    Returns:
+        Dict com 'success' (bool) e 'data' ou 'error'
+    \"\"\"
+    try:
+        # 1. Validação de entrada
+        if not param1:
+            return {"success": False, "error": "param1 é obrigatório"}
+        
+        # 2. Lógica principal
+        result = alguma_operacao(param1, param2)
+        
+        # 3. Retorno padronizado
+        return {
+            "success": True,
+            "data": result
+        }
+        
+    except requests.RequestException as e:
+        return {"success": False, "error": f"Erro de conexão: {str(e)}"}
+    except Exception as e:
+        return {"success": False, "error": f"Erro inesperado: {str(e)}"}
+```
+
+## REGRAS IMPORTANTES
+
+1. **Função principal**: Sempre `Run()` com R maiúsculo
+2. **Retorno**: Sempre `Dict[str, Any]` com `success` boolean
+3. **Tratamento de erros**: Try/except obrigatório
+4. **Docstring**: Sempre com Args e Returns documentados
+5. **Type hints**: Todos os parâmetros tipados
+6. **Imports**: No topo do arquivo, organizados
+7. **Validação**: Sempre validar inputs antes de processar
+
+## PADRÕES DE CÓDIGO
+
+- Use f-strings para formatação
+- Logs opcionais com print() para debug
+- Constantes em UPPERCASE no topo
+- Funções auxiliares privadas com _prefixo
+- Comentários em português quando explicativos
+
+## REQUIREMENTS.TXT
+
+Liste apenas dependências necessárias:
+```
+requests>=2.28.0
+# outras libs específicas
+```
+
+Gere código LIMPO, PROFISSIONAL e FUNCIONAL.""",
+                "user_prompt_template": """Crie uma ferramenta Python para o seguinte propósito:
+
+**NOME DA FERRAMENTA:** {tool_name}
+**DESCRIÇÃO:** {tool_description}
+
+**DOCUMENTAÇÃO/CONTEXTO:**
+{documentation}
+
+Gere:
+1. O código Python completo (main.py) seguindo o padrão especificado
+2. O arquivo requirements.txt com dependências necessárias
+
+Retorne em formato JSON:
+{{
+    "tool_slug": "slug_da_tool",
+    "tool_name": "Nome da Tool",
+    "description": "Descrição curta",
+    "main_py": "código python aqui",
+    "requirements_txt": "dependências aqui",
+    "parameters": [
+        {{"name": "param1", "type": "string", "description": "desc", "required": true}}
+    ]
+}}""",
+                "temperature": 0.3,
+                "max_tokens": 4000
             }
         ]
         

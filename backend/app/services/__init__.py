@@ -4,6 +4,9 @@ from .agent_service import agent_service, AgentService
 from .vector_service import vector_service, VectorService
 from .auth_service import auth_service, AuthService
 from .metrics_service import metrics_service, MetricsService
+from .project_service import project_service, ProjectService
+from .tool_service import tool_service, ToolService
+from .weni_service import weni_service, WeniService
 
 __all__ = [
     "github_service",
@@ -18,5 +21,11 @@ __all__ = [
     "AuthService",
     "metrics_service",
     "MetricsService",
+    "project_service",
+    "ProjectService",
+    "tool_service",
+    "ToolService",
+    "weni_service",
+    "WeniService",
 ]
 

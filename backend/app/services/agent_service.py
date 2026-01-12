@@ -217,6 +217,69 @@ class AgentService:
         
         return None
     
+    def _parse_agent_definition(self, content: Optional[str]) -> dict:
+        """Parseia o agent_definition e extrai instructions, guardrails, etc."""
+        result = {
+            "agent_name": "",
+            "agent_description": "",
+            "agent_instructions": [],
+            "agent_guardrails": []
+        }
+        
+        if not content:
+            return result
+        
+        try:
+            import yaml
+            
+            # Tenta parsear como YAML
+            data = yaml.safe_load(content)
+            
+            if not isinstance(data, dict):
+                return result
+            
+            # Busca em diferentes estruturas possíveis
+            # Estrutura 1: agents -> agent_name -> instructions/guardrails
+            if "agents" in data and isinstance(data["agents"], dict):
+                for agent_key, agent_data in data["agents"].items():
+                    if isinstance(agent_data, dict):
+                        result["agent_name"] = agent_data.get("name", agent_key)
+                        result["agent_description"] = agent_data.get("description", "")
+                        
+                        # Instructions
+                        instructions = agent_data.get("instructions", [])
+                        if isinstance(instructions, str):
+                            instructions = [instructions]
+                        result["agent_instructions"] = instructions
+                        
+                        # Guardrails
+                        guardrails = agent_data.get("guardrails", [])
+                        if isinstance(guardrails, str):
+                            guardrails = [guardrails]
+                        result["agent_guardrails"] = guardrails
+                        
+                        break  # Pega apenas o primeiro agente
+            
+            # Estrutura 2: instructions/guardrails na raiz
+            elif "instructions" in data or "guardrails" in data:
+                result["agent_name"] = data.get("name", "")
+                result["agent_description"] = data.get("description", "")
+                
+                instructions = data.get("instructions", [])
+                if isinstance(instructions, str):
+                    instructions = [instructions]
+                result["agent_instructions"] = instructions
+                
+                guardrails = data.get("guardrails", [])
+                if isinstance(guardrails, str):
+                    guardrails = [guardrails]
+                result["agent_guardrails"] = guardrails
+        
+        except Exception as e:
+            print(f"Erro ao parsear agent_definition: {e}")
+        
+        return result
+    
     async def analyze_repository(
         self, 
         repo_full_name: str,
@@ -253,9 +316,11 @@ class AgentService:
         
         repo_path = settings.REPOS_BASE_DIR / repo_full_name.replace("/", "_")
         
+        # force_update=True garante que sempre baixa as últimas alterações do GitHub
         success = github_service.clone_repository(
             repo_info.clone_url,
-            repo_path
+            repo_path,
+            force_update=True  # Sempre atualiza para pegar commits mais recentes
         )
         
         if not success:
@@ -280,6 +345,10 @@ class AgentService:
         # Coleta arquivos (da pasta específica se informada)
         files = self._collect_files(repo_path, folder_path)
         files_count = len(files)
+        
+        # Extrai informações do agent_definition
+        agent_definition_content = self._get_agent_definition(repo_path, folder_path)
+        agent_info = self._parse_agent_definition(agent_definition_content)
         
         self.analysis_status[analysis_name] = AnalysisStatus(
             repository=analysis_name,
@@ -465,6 +534,12 @@ class AgentService:
                 
                 technical_kb = TechnicalKnowledgeBase(
                     repository_name=analysis_name,
+                    # Dados do agent_definition
+                    agent_name=agent_info.get("agent_name", ""),
+                    agent_description=agent_info.get("agent_description", ""),
+                    agent_instructions=agent_info.get("agent_instructions", []),
+                    agent_guardrails=agent_info.get("agent_guardrails", []),
+                    # Dados da análise técnica
                     technical_summary=tech_data.get("technical_summary", ""),
                     architecture_diagram=tech_data.get("architecture_diagram", ""),
                     handlers_detail=handlers_detail,
@@ -637,6 +712,15 @@ class AgentService:
         self.knowledge_bases[analysis_name] = knowledge_base
         self._save_knowledge_bases()
         
+        # Indexação automática no vector store para busca semântica
+        try:
+            from .vector_service import vector_service
+            kb_dict = knowledge_base.model_dump(mode="json")
+            vector_service.index_agent(analysis_name, kb_dict)
+            print(f"✅ Agente indexado automaticamente: {analysis_name}")
+        except Exception as e:
+            print(f"⚠️ Erro ao indexar automaticamente (busca pode não funcionar): {e}")
+        
         # Calcula métricas finais
         duration_seconds = int(time.time() - start_time)
         kb_types = []
@@ -691,6 +775,14 @@ class AgentService:
             message=f"Análise concluída em {duration_seconds}s!"
         )
         
+        # Cria snapshot automaticamente para comparação futura (diff de atualizações)
+        try:
+            from .updates_service import updates_service
+            updates_service.create_snapshot(knowledge_base, indexed_by="system")
+            print(f"📸 Snapshot criado para {analysis_name}")
+        except Exception as e:
+            print(f"⚠️ Erro ao criar snapshot: {e}")
+        
         return knowledge_base
     
     async def analyze_multiple(
@@ -722,6 +814,98 @@ class AgentService:
     def list_knowledge_bases(self) -> List[str]:
         """Lista todas as bases de conhecimento."""
         return list(self.knowledge_bases.keys())
+    
+    async def reindex_all_with_instructions(self) -> dict:
+        """
+        Reindexe todas as KBs existentes, extraindo instructions do agent_definition.yaml.
+        Isso atualiza o vector store para que a busca semântica considere as instruções.
+        """
+        from .vector_service import vector_service
+        
+        results = {
+            "total": len(self.knowledge_bases),
+            "updated": 0,
+            "failed": 0,
+            "details": []
+        }
+        
+        for kb_name, kb in self.knowledge_bases.items():
+            try:
+                # Extrai owner/repo/folder do nome da KB
+                parts = kb_name.split("/")
+                if len(parts) >= 2:
+                    owner = parts[0]
+                    repo = parts[1]
+                    folder_path = "/".join(parts[2:]) if len(parts) > 2 else None
+                    
+                    # Busca o repositório local
+                    repo_path = settings.REPOS_BASE_DIR / f"{owner}_{repo}"
+                    
+                    if repo_path.exists():
+                        # Extrai agent_definition
+                        agent_definition_content = self._get_agent_definition(repo_path, folder_path)
+                        agent_info = self._parse_agent_definition(agent_definition_content)
+                        
+                        # Atualiza a KB técnica com as instruções
+                        if kb.technical:
+                            kb.technical.agent_name = agent_info.get("agent_name", "")
+                            kb.technical.agent_description = agent_info.get("agent_description", "")
+                            kb.technical.agent_instructions = agent_info.get("agent_instructions", [])
+                            kb.technical.agent_guardrails = agent_info.get("agent_guardrails", [])
+                        
+                        # Salva a KB atualizada
+                        self.knowledge_bases[kb_name] = kb
+                        
+                        # Reindexe no vector store
+                        kb_dict = kb.model_dump(mode="json")
+                        success = vector_service.index_agent(kb_name, kb_dict)
+                        
+                        if success:
+                            results["updated"] += 1
+                            instructions_count = len(agent_info.get("agent_instructions", []))
+                            results["details"].append({
+                                "kb_name": kb_name,
+                                "status": "success",
+                                "instructions_found": instructions_count
+                            })
+                            print(f"✅ Reindexado: {kb_name} ({instructions_count} instructions)")
+                        else:
+                            results["failed"] += 1
+                            results["details"].append({
+                                "kb_name": kb_name,
+                                "status": "indexing_failed"
+                            })
+                    else:
+                        # Repositório não existe localmente, indexa com dados existentes
+                        kb_dict = kb.model_dump(mode="json")
+                        vector_service.index_agent(kb_name, kb_dict)
+                        results["updated"] += 1
+                        results["details"].append({
+                            "kb_name": kb_name,
+                            "status": "reindexed_without_update",
+                            "reason": "repo_not_local"
+                        })
+                else:
+                    results["failed"] += 1
+                    results["details"].append({
+                        "kb_name": kb_name,
+                        "status": "invalid_name"
+                    })
+                    
+            except Exception as e:
+                print(f"❌ Erro ao reindexar {kb_name}: {e}")
+                results["failed"] += 1
+                results["details"].append({
+                    "kb_name": kb_name,
+                    "status": "error",
+                    "error": str(e)
+                })
+        
+        # Salva as KBs atualizadas
+        self._save_knowledge_bases()
+        
+        print(f"\n🔄 Reindexação concluída: {results['updated']} atualizados, {results['failed']} falhas")
+        return results
     
     def get_status(self, repo_name: str) -> Optional[AnalysisStatus]:
         """Retorna o status da análise de um repositório."""
@@ -961,6 +1145,342 @@ Use linguagem simples para explicar o que cada agente faz e como pode ajudar."""
         async for chunk in ai_service.generate_stream(message, system_prompt):
             yield chunk
     
+    async def chat_with_kb_stream(
+        self, 
+        message: str, 
+        kb_name: str,
+        mode: str = "technical"
+    ) -> AsyncGenerator[str, None]:
+        """Chat focado em uma KB específica."""
+        # Carrega a KB específica
+        kb = self.get_knowledge_base(kb_name)
+        kb_data = kb.model_dump() if kb else None
+        
+        if not kb_data:
+            yield f"Não encontrei a base de conhecimento '{kb_name}'. "
+            return
+        
+        # Extrai informações relevantes da KB
+        tech = kb_data.get("technical", {})
+        biz = kb_data.get("business", {})
+        
+        # Monta contexto focado
+        context_parts = []
+        
+        # Nome do agente
+        agent_name = kb_name.split('/')[-1] if '/' in kb_name else kb_name
+        context_parts.append(f"## Agente: {agent_name}")
+        
+        if mode == "technical":
+            if tech.get("technical_summary"):
+                context_parts.append(f"### Resumo Técnico:\n{tech['technical_summary']}")
+            
+            # ARQUITETURA
+            if tech.get("architecture_diagram"):
+                context_parts.append(f"### Arquitetura:\n{tech['architecture_diagram']}")
+            
+            # FONTES DE DADOS E CREDENCIAIS (importante!)
+            if tech.get("data_sources"):
+                sources = []
+                for ds in tech['data_sources']:
+                    if isinstance(ds, dict):
+                        source_info = f"- **{ds.get('name', 'Fonte')}** ({ds.get('type', 'api')})"
+                        if ds.get('connection'):
+                            source_info += f"\n  - Conexão/Credenciais: {ds['connection']}"
+                        if ds.get('data_provided'):
+                            data_list = ds['data_provided'] if isinstance(ds['data_provided'], list) else [ds['data_provided']]
+                            source_info += f"\n  - Dados fornecidos: {', '.join(str(d) for d in data_list)}"
+                        if ds.get('used_by'):
+                            used_list = ds['used_by'] if isinstance(ds['used_by'], list) else [ds['used_by']]
+                            source_info += f"\n  - Usado por: {', '.join(str(u) for u in used_list)}"
+                        sources.append(source_info)
+                    else:
+                        sources.append(f"- {ds}")
+                context_parts.append(f"### Fontes de Dados e Credenciais:\n" + "\n".join(sources))
+            
+            # VARIÁVEIS DE AMBIENTE / CREDENCIAIS
+            if tech.get("environment_variables"):
+                env_vars = []
+                for v in tech['environment_variables']:
+                    if isinstance(v, dict):
+                        env_vars.append(f"- **{v.get('name', '')}**: {v.get('purpose', v.get('description', ''))}")
+                    else:
+                        env_vars.append(f"- {v}")
+                context_parts.append(f"### Variáveis de Ambiente/Credenciais Necessárias:\n" + "\n".join(env_vars))
+            
+            # ARQUIVOS DE CONFIGURAÇÃO
+            if tech.get("configuration_files"):
+                files = "\n".join([f"- {f}" for f in tech['configuration_files'][:5]])
+                context_parts.append(f"### Arquivos de Configuração:\n{files}")
+            
+            # APIs EXPOSTAS
+            if tech.get("api_endpoints"):
+                endpoints = []
+                for e in tech['api_endpoints'][:10]:
+                    ep_info = f"- **{e.get('method', 'GET')} {e.get('path', '')}**: {e.get('description', '')}"
+                    if e.get('parameters'):
+                        params = e['parameters']
+                        if isinstance(params, list):
+                            param_names = [p.get('name', str(p)) if isinstance(p, dict) else str(p) for p in params[:5]]
+                            ep_info += f"\n  - Parâmetros: {', '.join(param_names)}"
+                    endpoints.append(ep_info)
+                context_parts.append(f"### APIs Expostas:\n" + "\n".join(endpoints))
+            
+            # APIs EXTERNAS CONSUMIDAS
+            if tech.get("external_apis_consumed"):
+                apis = []
+                for a in tech['external_apis_consumed'][:8]:
+                    if isinstance(a, dict):
+                        api_info = f"- **{a.get('name', 'API')}**"
+                        if a.get('base_url'):
+                            api_info += f"\n  - URL Base: {a['base_url']}"
+                        if a.get('authentication'):
+                            api_info += f"\n  - Autenticação: {a['authentication']}"
+                        if a.get('purpose'):
+                            api_info += f"\n  - Propósito: {a['purpose']}"
+                        if a.get('endpoints_used'):
+                            eps = a['endpoints_used'] if isinstance(a['endpoints_used'], list) else [a['endpoints_used']]
+                            api_info += f"\n  - Endpoints usados: {', '.join(str(e) for e in eps[:5])}"
+                        if a.get('data_exchanged'):
+                            data = a['data_exchanged'] if isinstance(a['data_exchanged'], list) else [a['data_exchanged']]
+                            api_info += f"\n  - Dados trocados: {', '.join(str(d) for d in data[:5])}"
+                        apis.append(api_info)
+                    else:
+                        apis.append(f"- {a}")
+                context_parts.append(f"### APIs Externas Consumidas:\n" + "\n".join(apis))
+            
+            # HANDLERS/FUNÇÕES
+            if tech.get("handlers_detail"):
+                handlers = []
+                for h in tech['handlers_detail'][:10]:
+                    h_info = f"- **{h.get('name', '')}**: {h.get('purpose', '')}"
+                    if h.get('input_parameters'):
+                        params = h['input_parameters']
+                        if isinstance(params, list):
+                            param_names = [p.get('name', str(p)) if isinstance(p, dict) else str(p) for p in params[:5]]
+                            h_info += f"\n  - Entrada: {', '.join(param_names)}"
+                    if h.get('external_calls'):
+                        calls = h['external_calls']
+                        if isinstance(calls, list):
+                            call_names = [c.get('service', str(c)) if isinstance(c, dict) else str(c) for c in calls[:3]]
+                            h_info += f"\n  - Chamadas externas: {', '.join(call_names)}"
+                    if h.get('output'):
+                        h_info += f"\n  - Retorno: {h['output']}"
+                    handlers.append(h_info)
+                context_parts.append(f"### Handlers/Funções Principais:\n" + "\n".join(handlers))
+            
+            # FLUXOS DE VALIDAÇÃO
+            if tech.get("validation_flows"):
+                flows = []
+                for vf in tech['validation_flows'][:5]:
+                    if isinstance(vf, dict):
+                        flow_info = f"- **{vf.get('name', '')}**: {vf.get('description', '')}"
+                        if vf.get('data_source'):
+                            flow_info += f" (Fonte: {vf['data_source']})"
+                        flows.append(flow_info)
+                    else:
+                        flows.append(f"- {vf}")
+                context_parts.append(f"### Fluxos de Validação:\n" + "\n".join(flows))
+            
+            # REGRAS DE NEGÓCIO
+            if tech.get("business_rules"):
+                rules = []
+                for r in tech['business_rules'][:8]:
+                    if isinstance(r, dict):
+                        rule_info = f"- **{r.get('name', '')}**: {r.get('description', '')}"
+                        if r.get('trigger'):
+                            rule_info += f"\n  - Gatilho: {r['trigger']}"
+                        if r.get('conditions'):
+                            conds = r['conditions'] if isinstance(r['conditions'], list) else [r['conditions']]
+                            rule_info += f"\n  - Condições: {'; '.join(str(c) for c in conds[:3])}"
+                        if r.get('actions'):
+                            acts = r['actions'] if isinstance(r['actions'], list) else [r['actions']]
+                            rule_info += f"\n  - Ações: {'; '.join(str(a) for a in acts[:3])}"
+                        rules.append(rule_info)
+                    else:
+                        rules.append(f"- {r}")
+                context_parts.append(f"### Regras de Negócio:\n" + "\n".join(rules))
+            
+            # REGRAS DE VALIDAÇÃO
+            if tech.get("validation_rules"):
+                val_rules = "\n".join([f"- {r}" for r in tech['validation_rules'][:8]])
+                context_parts.append(f"### Regras de Validação:\n{val_rules}")
+            
+            # SERVIÇOS
+            if tech.get("services"):
+                services = []
+                for s in tech['services'][:5]:
+                    if isinstance(s, dict):
+                        services.append(f"- **{s.get('name', '')}** ({s.get('type', '')}): {s.get('description', '')}")
+                    else:
+                        services.append(f"- {s}")
+                context_parts.append(f"### Serviços:\n" + "\n".join(services))
+            
+            # INTEGRAÇÕES
+            if tech.get("integrations"):
+                integrations = []
+                for i in tech['integrations'][:5]:
+                    if isinstance(i, dict):
+                        int_info = f"- **{i.get('name', '')}** ({i.get('type', '')})"
+                        if i.get('endpoint'):
+                            int_info += f": {i['endpoint']}"
+                        integrations.append(int_info)
+                    else:
+                        integrations.append(f"- {i}")
+                context_parts.append(f"### Integrações:\n" + "\n".join(integrations))
+            
+            # TECNOLOGIAS
+            if tech.get("technologies"):
+                techs = ", ".join(tech['technologies'][:10])
+                context_parts.append(f"### Tecnologias Utilizadas:\n{techs}")
+            
+            # WEBHOOKS
+            if tech.get("webhooks"):
+                webhooks = "\n".join([f"- {w}" for w in tech['webhooks'][:5]])
+                context_parts.append(f"### Webhooks:\n{webhooks}")
+        else:
+            # MODO NEGÓCIO - informações para não-técnicos
+            if biz.get("product_name"):
+                context_parts.append(f"### Produto: {biz['product_name']}")
+            if biz.get("product_description"):
+                context_parts.append(f"### Descrição:\n{biz['product_description']}")
+            
+            # FUNCIONALIDADES PRINCIPAIS
+            if biz.get("main_features"):
+                features = "\n".join([f"- {f}" for f in biz['main_features'][:10]])
+                context_parts.append(f"### Funcionalidades Principais:\n{features}")
+            
+            # CAPACIDADES DETALHADAS
+            if biz.get("capabilities"):
+                caps = []
+                for c in biz['capabilities'][:10]:
+                    if isinstance(c, dict):
+                        cap_info = f"- **{c.get('name', '')}**: {c.get('description', '')}"
+                        if c.get('when_to_use'):
+                            cap_info += f"\n  - Quando usar: {c['when_to_use']}"
+                        if c.get('required_info'):
+                            req = c['required_info'] if isinstance(c['required_info'], list) else [c['required_info']]
+                            cap_info += f"\n  - Informações necessárias: {', '.join(str(r) for r in req)}"
+                        if c.get('possible_outcomes'):
+                            outcomes = c['possible_outcomes'] if isinstance(c['possible_outcomes'], list) else [c['possible_outcomes']]
+                            cap_info += f"\n  - Resultados possíveis: {', '.join(str(o) for o in outcomes[:3])}"
+                        caps.append(cap_info)
+                    else:
+                        caps.append(f"- {c}")
+                context_parts.append(f"### Capacidades do Sistema:\n" + "\n".join(caps))
+            
+            # CASOS DE USO
+            if biz.get("use_cases"):
+                use_cases = "\n".join([f"- {u}" for u in biz['use_cases'][:8]])
+                context_parts.append(f"### Casos de Uso:\n{use_cases}")
+            
+            # FLUXOS PRINCIPAIS
+            if biz.get("main_flows"):
+                flows = "\n".join([f"- {f}" for f in biz['main_flows'][:8]])
+                context_parts.append(f"### Fluxos Principais:\n{flows}")
+            
+            # FLUXOS DETALHADOS
+            if biz.get("detailed_flows"):
+                detailed = []
+                for df in biz['detailed_flows'][:5]:
+                    if isinstance(df, dict):
+                        flow_info = f"- **{df.get('name', '')}**"
+                        if df.get('trigger'):
+                            flow_info += f"\n  - Início: {df['trigger']}"
+                        if df.get('steps'):
+                            steps = df['steps'] if isinstance(df['steps'], list) else [df['steps']]
+                            flow_info += f"\n  - Passos: {' → '.join(str(s) for s in steps[:5])}"
+                        if df.get('possible_errors'):
+                            errors = df['possible_errors'] if isinstance(df['possible_errors'], list) else [df['possible_errors']]
+                            flow_info += f"\n  - Possíveis erros: {', '.join(str(e) for e in errors[:3])}"
+                        detailed.append(flow_info)
+                    else:
+                        detailed.append(f"- {df}")
+                context_parts.append(f"### Fluxos Detalhados:\n" + "\n".join(detailed))
+            
+            # PÚBLICO-ALVO
+            if biz.get("target_users"):
+                users = ", ".join(biz['target_users'][:5])
+                context_parts.append(f"### Público-Alvo:\n{users}")
+            
+            # INTEGRAÇÕES
+            if biz.get("integrations_summary"):
+                integrations = []
+                for i in biz['integrations_summary'][:8]:
+                    if isinstance(i, dict):
+                        int_info = f"- **{i.get('system', '')}**: {i.get('purpose', '')}"
+                        if i.get('data_involved'):
+                            data = i['data_involved'] if isinstance(i['data_involved'], list) else [i['data_involved']]
+                            int_info += f"\n  - Dados envolvidos: {', '.join(str(d) for d in data)}"
+                        integrations.append(int_info)
+                    else:
+                        integrations.append(f"- {i}")
+                context_parts.append(f"### Integrações:\n" + "\n".join(integrations))
+            
+            # FAQ
+            if biz.get("faq"):
+                faq_items = []
+                for f in biz['faq'][:8]:
+                    if isinstance(f, dict):
+                        faq_items.append(f"**P: {f.get('question', '')}**\nR: {f.get('answer', '')}")
+                    else:
+                        faq_items.append(str(f))
+                context_parts.append(f"### Perguntas Frequentes:\n" + "\n\n".join(faq_items))
+            
+            # GLOSSÁRIO
+            if biz.get("glossary"):
+                glossary = []
+                for g in biz['glossary'][:10]:
+                    if isinstance(g, dict):
+                        glossary.append(f"- **{g.get('term', '')}**: {g.get('definition', '')}")
+                    else:
+                        glossary.append(f"- {g}")
+                context_parts.append(f"### Glossário:\n" + "\n".join(glossary))
+            
+            # Inclui também dados técnicos relevantes no modo business
+            if tech.get("data_sources"):
+                sources = []
+                for ds in tech['data_sources'][:5]:
+                    if isinstance(ds, dict):
+                        data_provided = ds.get('data_provided', [])
+                        if isinstance(data_provided, list):
+                            sources.append(f"- **{ds.get('name', '')}**: {', '.join(str(d) for d in data_provided)}")
+                        else:
+                            sources.append(f"- **{ds.get('name', '')}**: {data_provided}")
+                    else:
+                        sources.append(f"- {ds}")
+                context_parts.append(f"### Fontes de Dados:\n" + "\n".join(sources))
+        
+        context = "\n\n".join(context_parts)
+        
+        if mode == "technical":
+            system_prompt = f"""Você é um especialista técnico respondendo sobre o agente "{agent_name}".
+            
+IMPORTANTE: Responda APENAS sobre este agente específico. Não mencione outros agentes.
+
+## Contexto do Agente:
+{context}
+
+## Instruções:
+- Responda de forma técnica e objetiva
+- Foque nas APIs, handlers, integrações e regras de negócio DESTE agente
+- Se a pergunta não puder ser respondida com o contexto disponível, diga que não tem essa informação"""
+        else:
+            system_prompt = f"""Você é um assistente amigável explicando o agente "{agent_name}".
+            
+IMPORTANTE: Responda APENAS sobre este agente específico. Não mencione outros agentes.
+
+## Contexto do Agente:
+{context}
+
+## Instruções:
+- Explique de forma simples e clara
+- Foque nas funcionalidades e casos de uso DESTE agente
+- Se a pergunta não puder ser respondida com o contexto disponível, diga que não tem essa informação"""
+
+        async for chunk in ai_service.generate_stream(message, system_prompt):
+            yield chunk
+    
     async def find_existing_agent(self, description: str) -> dict:
         """
         Verifica se já existe um agente que faz o que foi descrito.
@@ -1091,6 +1611,64 @@ REGRAS:
         # Retorna original se não conseguir decodificar
         return text
     
+    def _extract_root_cause(self, text: str) -> Optional[str]:
+        """Tenta extrair causa raiz do texto livre."""
+        import re
+        
+        # Padrões comuns
+        patterns = [
+            r'[Cc]ausa\s*[Rr]aiz[:\s]+([^\n.]+)',
+            r'[Rr]oot\s*[Cc]ause[:\s]+([^\n.]+)',
+            r'[Pp]roblema\s*(?:é|está)[:\s]+([^\n.]+)',
+            r'[Oo]\s*erro\s*(?:é|está)[:\s]+([^\n.]+)',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if match:
+                return match.group(1).strip()
+        
+        return None
+    
+    def _extract_handlers(self, text: str) -> List[str]:
+        """Tenta extrair nomes de handlers do texto."""
+        import re
+        
+        handlers = []
+        # Procura por padrões comuns de nomes de handlers
+        patterns = [
+            r'(?:handler|função|function)[:\s]*[`"]?(\w+)[`"]?',
+            r'`(\w+_handler)`',
+            r'(\w+Handler)',
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            handlers.extend(matches)
+        
+        return list(set(handlers))[:10]
+    
+    def _extract_suggestions(self, text: str) -> List[str]:
+        """Tenta extrair sugestões do texto."""
+        import re
+        
+        suggestions = []
+        
+        # Procura por listas numeradas ou com bullets
+        lines = text.split('\n')
+        for line in lines:
+            line = line.strip()
+            # Linhas que começam com número ou bullet
+            if re.match(r'^[\d\-\*•]+[.\):\s]', line):
+                suggestion = re.sub(r'^[\d\-\*•]+[.\):\s]+', '', line).strip()
+                if len(suggestion) > 10 and len(suggestion) < 200:
+                    suggestions.append(suggestion)
+        
+        if not suggestions:
+            suggestions = ["Revise o código e as instruções do agente manualmente"]
+        
+        return suggestions[:5]
+    
     async def debug_problem(
         self,
         repository: str,
@@ -1180,48 +1758,68 @@ REGRAS:
         system_prompt = """Você é um especialista em debugging de agentes de IA/chatbots para e-commerce (VTEX).
 Sua tarefa é fazer uma investigação PROFUNDA do problema reportado.
 
-## ANÁLISE DO JSON DE RETORNO (CRÍTICO):
-Quando receber um JSON da VTEX, analise DETALHADAMENTE:
+## REGRA ABSOLUTA - CONSISTÊNCIA COM OUTROS MÓDULOS:
+Se houver uma MENSAGEM DE ERRO explícita, SEMPRE reconheça que EXISTE UM PROBLEMA REAL.
+- Nunca diga que "não há problema" quando existe um erro
+- Nunca diga que é "apenas refatoração" quando há erro em execução
+- Se há erro do tipo "'str' object has no attribute 'get'" → EXISTE um problema de tipo/parsing
+- Sua análise deve ser DEFINITIVA sobre a existência do problema
 
-1. **Seller vs Lojas de Retirada**: 
-   - Quem é o seller do pedido? (campo `sellers[].id` ou `items[].seller`)
-   - Quais lojas foram oferecidas para retirada? (`shippingData.logisticsInfo[].slas[]` onde `deliveryChannel`="pickup-in-point")
-   - A tool retornou MAIS lojas do que deveria? O seller é diferente das lojas oferecidas?
+## IDENTIFICAÇÃO DO PROBLEMA (CRÍTICO):
+1. **Mensagens de erro são PROVA de problema**:
+   - Se a mensagem diz "AttributeError" → há acesso indevido a atributo
+   - Se diz "'str' object has no attribute" → dado está como string quando deveria ser dict/list
+   - Se diz "KeyError" → chave não existe no dicionário
+   - ESSES SÃO BUGS REAIS que precisam de correção
 
-2. **Dados de Endereço**:
-   - Qual endereço de entrega? (`shippingData.address`)
-   - Quais endereços de pickup? (`pickupStoreInfo.address`)
-   - Há inconsistência entre endereço selecionado e opções mostradas?
+2. **Análise de tipos de dados**:
+   - Verifique se os parâmetros estão sendo parseados corretamente
+   - `product_items` vindo como string vs list/dict é um problema de PARSING
+   - Conversões com `json.loads()` ou `ast.literal_eval()` podem falhar
 
 3. **Lógica da Tool**:
-   - A tool filtrou corretamente os dados?
-   - Retornou dados demais? De menos?
-   - Usou o campo correto para filtrar?
+   - A tool valida tipos antes de usar `.get()`?
+   - Há tratamento para quando dados vêm em formato inesperado?
+   - Os fallbacks cobrem todos os casos?
 
-## NÍVEL DE ANÁLISE ESPERADO:
-- NÃO apenas diga "dados vieram do campo X"
-- IDENTIFIQUE se a tool deveria ter filtrado esses dados
-- EXPLIQUE por que retornou informação errada/excessiva
-- SUGIRA qual lógica de filtro está faltando
+## ANÁLISE DO JSON DE RETORNO (quando fornecido):
+1. **Seller vs Lojas de Retirada**: 
+   - Quem é o seller do pedido? (campo `sellers[].id` ou `items[].seller`)
+   - Quais lojas foram oferecidas para retirada?
+   - A tool retornou MAIS lojas do que deveria?
 
-Responda em JSON:
+2. **Dados de Endereço**:
+   - Qual endereço de entrega?
+   - Quais endereços de pickup?
+   - Há inconsistência entre endereço selecionado e opções mostradas?
+
+## FORMATO DA RESPOSTA:
+Responda em JSON com diagnóstico DEFINITIVO:
 {
-    "problem_summary": "Resumo claro do problema",
-    "root_cause": "Causa raiz ESPECÍFICA (ex: 'A tool retornou todas as lojas com estoque ao invés de apenas a loja do seller')",
+    "problem_confirmed": true,
+    "problem_summary": "Resumo claro do problema - SEJA DEFINITIVO",
+    "root_cause": "Causa raiz ESPECÍFICA e TÉCNICA do problema",
+    "root_cause_type": "code|config|data_format|integration|unknown",
+    "severity": "critical|high|medium|low",
     "data_analysis": {
-        "seller_info": "Identificação do seller no JSON",
-        "data_returned": "O que foi retornado ao usuário",
-        "data_expected": "O que DEVERIA ter sido retornado",
+        "input_received": "O que a tool recebeu como entrada",
+        "expected_type": "Tipo esperado (dict, list, etc)",
+        "actual_type": "Tipo recebido (string, etc)",
         "discrepancy": "A diferença/erro identificado"
     },
-    "data_flow": "Caminho dos dados: de onde vieram → como foram processados → o que foi retornado",
+    "data_flow": "Caminho dos dados: entrada → processamento → onde falha",
     "tool_logic_issue": "Problema específico na lógica da tool/função",
     "affected_handlers": ["handlers/funções envolvidos"],
     "affected_code_locations": ["arquivo.py - descrição do que fazer"],
-    "evidence": ["evidências do JSON que comprovam o problema"],
-    "suggestions": ["correções específicas na lógica"],
-    "confidence": "low/medium/high"
-}"""
+    "evidence": ["evidências que comprovam o problema"],
+    "suggestions": ["correções específicas - SEJA ESPECÍFICO"],
+    "confidence": "high"
+}
+
+IMPORTANTE: 
+- Se há erro, "problem_confirmed" DEVE ser true
+- "confidence" deve ser "high" quando há mensagem de erro explícita
+- Seja ESPECÍFICO nas sugestões de correção"""
 
         investigation_prompt = f"""
 PROBLEMA REPORTADO:
@@ -1253,31 +1851,64 @@ Investigue e identifique a causa raiz do problema.
                     folder=folder_path
                 )
             
-            # Tenta parsear JSON
+            # Tenta parsear JSON com múltiplas estratégias
             response_clean = response.strip()
-            if response_clean.startswith("```"):
-                lines = response_clean.split("\n")
-                response_clean = "\n".join(lines[1:-1])
-                if response_clean.startswith("json"):
-                    response_clean = response_clean[4:]
             
-            result = json.loads(response_clean)
-            result["agent_definition_found"] = bool(agent_definition)
-            result["knowledge_base_found"] = bool(kb)
-            return result
+            # Estratégia 1: Remove markdown code blocks
+            if "```json" in response_clean:
+                response_clean = response_clean.split("```json")[1].split("```")[0].strip()
+            elif "```" in response_clean:
+                parts = response_clean.split("```")
+                if len(parts) >= 2:
+                    response_clean = parts[1].strip()
+                    if response_clean.startswith("json"):
+                        response_clean = response_clean[4:].strip()
+            
+            # Estratégia 2: Encontra JSON por chaves
+            if not response_clean.startswith("{"):
+                start_idx = response_clean.find("{")
+                end_idx = response_clean.rfind("}") + 1
+                if start_idx != -1 and end_idx > start_idx:
+                    response_clean = response_clean[start_idx:end_idx]
+            
+            try:
+                result = json.loads(response_clean)
+                result["agent_definition_found"] = bool(agent_definition)
+                result["knowledge_base_found"] = bool(kb)
+                return result
+            except json.JSONDecodeError as json_err:
+                print(f"⚠️ Debug: Erro ao parsear JSON: {json_err}")
+                print(f"   Resposta (primeiros 500 chars): {response[:500]}")
+                
+                # Tenta extrair informações úteis do texto
+                return {
+                    "problem_summary": problem_description,
+                    "root_cause": self._extract_root_cause(response) or "Análise requer revisão manual.",
+                    "data_flow": response[:2000] if response else "Sem dados de fluxo",
+                    "affected_handlers": self._extract_handlers(response),
+                    "affected_code_locations": [],
+                    "suggestions": self._extract_suggestions(response),
+                    "confidence": "low",
+                    "agent_definition_found": bool(agent_definition),
+                    "knowledge_base_found": bool(kb),
+                    "raw_analysis": response[:3000]  # Inclui análise bruta
+                }
             
         except Exception as e:
-            # Fallback se não conseguir parsear JSON
+            print(f"❌ Debug: Erro na investigação: {e}")
+            import traceback
+            traceback.print_exc()
+            
             return {
                 "problem_summary": problem_description,
-                "root_cause": "Não foi possível identificar automaticamente. Veja a análise abaixo.",
-                "data_flow": response if 'response' in dir() else "Erro na análise",
+                "root_cause": f"Erro durante análise: {str(e)}",
+                "data_flow": "",
                 "affected_handlers": [],
                 "affected_code_locations": [],
-                "suggestions": ["Revise manualmente o código dos handlers"],
+                "suggestions": ["Verifique se a IA está configurada corretamente", "Tente novamente"],
                 "confidence": "low",
-                "agent_definition_found": bool(agent_definition),
-                "knowledge_base_found": bool(kb),
+                "agent_definition_found": bool(agent_definition) if 'agent_definition' in dir() else False,
+                "knowledge_base_found": bool(kb) if 'kb' in dir() else False,
                 "error": str(e)
             }
 
