@@ -15,7 +15,8 @@ from .routers import (
     repositories_router, 
     analysis_router, 
     search_router, 
-    prompts_router, 
+    prompts_router,
+    weni_router,
 )
 
 
@@ -61,12 +62,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Registra routers da API (v3 - versão enxuta)
+# Registra routers da API (v3 - suporte a agentes)
 app.include_router(config_router, prefix="/api")
 app.include_router(repositories_router, prefix="/api")
 app.include_router(analysis_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
 app.include_router(prompts_router, prefix="/api")
+app.include_router(weni_router, prefix="/api")
 
 
 # Serve frontend estático se existir o build
