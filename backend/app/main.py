@@ -1,13 +1,14 @@
 """
 GTH - Git Helper Tool v3
-Versão enxuta focada em tirar dúvidas.
+Suporte a agentes customizados.
+Autenticação obrigatória via Weni Cloud/Keycloak.
 """
 from pathlib import Path
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from .core import settings
 from .routers import (
@@ -18,6 +19,7 @@ from .routers import (
     prompts_router,
     weni_router,
 )
+from .services.keycloak_auth import get_current_user
 
 
 @asynccontextmanager
@@ -43,9 +45,72 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    description="Ferramenta para análise de repositórios e geração de base de conhecimento com IA",
+    description="Suporte a agentes customizados - Autenticação via Weni Cloud",
     lifespan=lifespan,
 )
+
+
+# Middleware de autenticação Keycloak
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """
+    Middleware que verifica autenticação Keycloak em todas as requisições /api.
+    Rotas públicas (login, status, health) são permitidas sem token.
+    """
+    path = request.url.path
+    
+    # Rotas públicas - não requerem autenticação
+    public_paths = [
+        "/api/weni/",
+        "/api/config/status",
+        "/health",
+        "/api/system/status",
+        "/docs",
+        "/redoc", 
+        "/openapi.json",
+        "/",
+        "/assets/",
+    ]
+    
+    # Verifica se é rota pública
+    is_public = any(path.startswith(p) or path == p.rstrip('/') for p in public_paths)
+    
+    # Se não é API ou é pública, permite
+    if not path.startswith("/api/") or is_public:
+        return await call_next(request)
+    
+    # Verifica token de autenticação
+    auth_header = request.headers.get("Authorization")
+    
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return JSONResponse(
+            status_code=401,
+            content={
+                "detail": "Autenticação necessária. Faça login com Weni Cloud.",
+                "login_required": True
+            },
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    
+    # Token presente - valida via Keycloak
+    token = auth_header.replace("Bearer ", "")
+    
+    try:
+        from .services.keycloak_auth import keycloak_auth
+        user_info = await keycloak_auth.validate_token(token)
+        # Armazena info do usuário no request state
+        request.state.user = user_info
+    except Exception as e:
+        return JSONResponse(
+            status_code=401,
+            content={
+                "detail": f"Token inválido ou expirado: {str(e)}",
+                "login_required": True
+            },
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+    
+    return await call_next(request)
 
 # CORS para permitir conexões do frontend
 app.add_middleware(
