@@ -7,15 +7,16 @@ import {
   SettingsModal, 
   AgentFinder,
   DebugPanel,
+  RepositoryList,
   TicketView
 } from './components';
 import { useAppStore } from './stores/appStore';
 
-type TabType = 'finder' | 'debug';
+type TabType = 'repos' | 'finder' | 'debug';
 
 function MainApp() {
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabType>('debug');
+  const [activeTab, setActiveTab] = useState<TabType>('repos');
   const { fetchStatus, status } = useAppStore();
   
   useEffect(() => {
@@ -44,11 +45,11 @@ function MainApp() {
               <MessageCircleQuestion className="w-8 h-8 text-white" />
             </div>
             <h2 className="text-xl font-semibold text-gray-900 mb-2">
-              Bem-vindo ao Agentic Helper
+              Suporte a Agentes Customizados
             </h2>
             <p className="text-gray-500 max-w-lg mx-auto mb-4">
-              Tire suas dúvidas sobre agentes e problemas de código. 
-              Configure o GitHub e IA para começar.
+              Tire dúvidas, diagnostique problemas e acompanhe updates 
+              dos seus agentes customizados. Configure o GitHub e IA para começar.
             </p>
             <button
               onClick={() => setSettingsOpen(true)}
@@ -66,6 +67,7 @@ function MainApp() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2 }}
         >
+          {activeTab === 'repos' && <RepositoryList />}
           {activeTab === 'finder' && <AgentFinder />}
           {activeTab === 'debug' && <DebugPanel />}
         </motion.div>

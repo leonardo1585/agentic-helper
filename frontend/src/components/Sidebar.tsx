@@ -4,10 +4,11 @@ import {
   Sparkles,
   Search,
   HelpCircle,
-  MessageCircleQuestion
+  Bug,
+  FolderGit2
 } from 'lucide-react';
 
-type TabType = 'finder' | 'debug';
+type TabType = 'repos' | 'finder' | 'debug';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -24,8 +25,9 @@ interface MenuItem {
 
 export function Sidebar({ activeTab, onTabChange, onOpenSettings }: SidebarProps) {
   const menuItems: MenuItem[] = [
-    { id: 'debug', label: 'Tirar Dúvidas', icon: MessageCircleQuestion, description: 'Diagnóstico e análise de problemas' },
+    { id: 'repos', label: 'Agentes', icon: FolderGit2, description: 'Diagnóstico e updates' },
     { id: 'finder', label: 'Buscar Agente', icon: Search, description: 'Encontrar agentes existentes' },
+    { id: 'debug', label: 'Debug', icon: Bug, description: 'Tirar dúvidas sobre problemas' },
   ];
 
   return (
@@ -98,9 +100,9 @@ export function Sidebar({ activeTab, onTabChange, onOpenSettings }: SidebarProps
         {/* Help section */}
         <div className="mt-8 p-4 rounded-xl bg-gradient-to-br from-[#00DED2]/5 to-cyan-50 border border-[#00DED2]/10">
           <HelpCircle className="w-6 h-6 text-[#00DED2] mb-2" />
-          <h4 className="text-sm font-medium text-gray-800 mb-1">Precisa de ajuda?</h4>
+          <h4 className="text-sm font-medium text-gray-800 mb-1">Suporte a Agentes</h4>
           <p className="text-xs text-gray-500">
-            Use "Tirar Dúvidas" para diagnóstico de problemas ou "Buscar Agente" para encontrar agentes.
+            Tire dúvidas, diagnostique problemas e acompanhe updates dos seus agentes customizados.
           </p>
         </div>
       </nav>

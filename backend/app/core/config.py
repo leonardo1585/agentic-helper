@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     """Configurações globais da aplicação."""
     
     APP_NAME: str = "Agentic Helper"
-    APP_VERSION: str = "3.0.0"  # v3 - Versão enxuta focada em tirar dúvidas
+    APP_VERSION: str = "3.0.0"  # v3 - Suporte a agentes customizados
     DEBUG: bool = True
     
     # Diretório base para repositórios
