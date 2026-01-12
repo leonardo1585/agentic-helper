@@ -1422,6 +1422,70 @@ export interface WeniOrgWithProjects {
   error?: string | null;
 }
 
+export interface ConversationSearchRequest {
+  project_uuid: string;
+  contact_urn: string;
+  days_back?: number;
+  start_date?: string;
+  end_date?: string;
+}
+
+export interface ConversationMessage {
+  id: number;  // ID para buscar traces
+  uuid?: string;
+  text?: string;
+  source_type?: 'user' | 'agent';  // Formato do Nexus
+  direction?: 'in' | 'out';  // Formato alternativo
+  created_at?: string;  // Formato do Nexus
+  created_on?: string;  // Formato alternativo
+  msg_type?: string;
+  attachments?: any[];
+  [key: string]: any;  // Permite campos adicionais
+}
+
+export interface TraceToolDetails {
+  action_group: string;
+  function: string;
+  parameters: Array<{ name: string; value: string }>;
+}
+
+export interface TraceDelegation {
+  target_agent: string;
+  input_text: string;
+}
+
+export interface ProcessedTrace {
+  agent_name: string;
+  type: string;
+  tool_name: string;
+  tool_details?: TraceToolDetails;
+  delegation?: TraceDelegation;
+  raw_trace: any;
+}
+
+export interface MessageTracesResult {
+  success: boolean;
+  project_uuid: string;
+  log_id: number;
+  total_traces: number;
+  traces: ProcessedTrace[];
+  raw_traces: any[];
+}
+
+export interface ConversationSearchResult {
+  success: boolean;
+  project_uuid: string;
+  contact_urn: string;
+  period: {
+    start: string;
+    end: string;
+    days: number;
+  };
+  data?: any;
+  total_messages?: number;
+  messages?: ConversationMessage[];
+}
+
 class WeniService {
   private async request<T>(
     endpoint: string,
@@ -1504,6 +1568,31 @@ class WeniService {
 
   async listProjects(orgUuid: string): Promise<{ results: WeniProject[]; next?: string }> {
     return this.request(`/weni/organizations/${orgUuid}/projects`);
+  }
+
+  // Nexus - Conversations
+  async searchConversations(request: ConversationSearchRequest): Promise<ConversationSearchResult> {
+    return this.request('/weni/conversations', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  async getConversationMessages(request: ConversationSearchRequest): Promise<ConversationSearchResult> {
+    return this.request('/weni/conversations/messages', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }, 120000);  // 2 min timeout para buscar todas as mensagens
+  }
+
+  async getMessageTraces(projectUuid: string, logId: number): Promise<MessageTracesResult> {
+    return this.request('/weni/traces', {
+      method: 'POST',
+      body: JSON.stringify({
+        project_uuid: projectUuid,
+        log_id: logId
+      }),
+    });
   }
 }
 

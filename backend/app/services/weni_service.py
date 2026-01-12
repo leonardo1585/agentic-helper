@@ -17,6 +17,9 @@ from queue import Queue
 
 from ..core import settings
 
+# URL base do Nexus
+NEXUS_API_URL = "https://nexus.weni.ai/api"
+
 # Contexto SSL que não verifica certificados (para desenvolvimento)
 # Em produção, considere usar certificados válidos
 SSL_CONTEXT = ssl.create_default_context()
@@ -616,6 +619,210 @@ class WeniService:
         print(f"[Weni] ═══════════════════════════════════════════")
         
         return all_orgs
+
+    # =========================================================================
+    # NEXUS API - Conversas
+    # =========================================================================
+    
+    async def get_conversations(
+        self, 
+        project_uuid: str, 
+        contact_urn: str,
+        start_date: str,
+        end_date: str
+    ) -> Dict[str, Any]:
+        """
+        Busca conversas de um contato no Nexus.
+        
+        Args:
+            project_uuid: UUID do projeto Weni
+            contact_urn: URN do contato (ex: ext:659802396226@analyst.demoaccount19.com)
+            start_date: Data início no formato ISO (ex: 2026-01-11T13:33:14.530736Z)
+            end_date: Data fim no formato ISO
+            
+        Returns:
+            Dict com as conversas encontradas
+        """
+        if not self._token:
+            raise Exception("Not authenticated. Please login first.")
+        
+        # Monta URL do Nexus
+        from urllib.parse import quote
+        encoded_urn = quote(contact_urn, safe='')
+        encoded_start = quote(start_date, safe='')
+        encoded_end = quote(end_date, safe='')
+        
+        url = f"{NEXUS_API_URL}/{project_uuid}/conversations/?contact_urn={encoded_urn}&start={encoded_start}&end={encoded_end}"
+        
+        print(f"[Nexus] Buscando conversas...")
+        print(f"[Nexus]   Projeto: {project_uuid}")
+        print(f"[Nexus]   Contato: {contact_urn}")
+        print(f"[Nexus]   Período: {start_date} → {end_date}")
+        
+        headers = {
+            "Authorization": f"Bearer {self._token}",
+            "Content-Type": "application/json"
+        }
+        
+        connector = aiohttp.TCPConnector(ssl=SSL_CONTEXT)
+        try:
+            async with aiohttp.ClientSession(connector=connector, timeout=DEFAULT_TIMEOUT) as session:
+                async with session.get(url, headers=headers) as response:
+                    if response.status == 401:
+                        self.clear_token()
+                        raise Exception("Token expired. Please login again.")
+                    
+                    if response.status == 404:
+                        raise Exception(f"Projeto não encontrado: {project_uuid}")
+                    
+                    if response.status != 200:
+                        error_text = await response.text()
+                        raise Exception(f"Erro ao buscar conversas: {error_text}")
+                    
+                    result = await response.json()
+                    print(f"[Nexus] ✅ Conversas encontradas")
+                    return result
+                    
+        except asyncio.TimeoutError:
+            raise Exception("Timeout ao conectar com o Nexus. Tente novamente.")
+        except aiohttp.ClientError as e:
+            raise Exception(f"Erro de conexão com o Nexus: {str(e)}")
+
+    async def get_conversation_messages(
+        self,
+        project_uuid: str,
+        contact_urn: str,
+        start_date: str,
+        end_date: str,
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        Busca mensagens de conversas com paginação.
+        
+        Args:
+            project_uuid: UUID do projeto Weni
+            contact_urn: URN do contato
+            start_date: Data início ISO
+            end_date: Data fim ISO
+            limit: Máximo de mensagens por página
+            
+        Returns:
+            Lista com todas as mensagens encontradas
+        """
+        if not self._token:
+            raise Exception("Not authenticated. Please login first.")
+        
+        from urllib.parse import quote
+        encoded_urn = quote(contact_urn, safe='')
+        encoded_start = quote(start_date, safe='')
+        encoded_end = quote(end_date, safe='')
+        
+        all_messages = []
+        next_url = f"{NEXUS_API_URL}/{project_uuid}/conversations/?contact_urn={encoded_urn}&start={encoded_start}&end={encoded_end}&limit={limit}"
+        page = 0
+        max_pages = 50  # Limite de segurança
+        
+        headers = {
+            "Authorization": f"Bearer {self._token}",
+            "Content-Type": "application/json"
+        }
+        
+        connector = aiohttp.TCPConnector(ssl=SSL_CONTEXT)
+        
+        print(f"[Nexus] Buscando mensagens de {contact_urn}...")
+        
+        try:
+            async with aiohttp.ClientSession(connector=connector, timeout=DEFAULT_TIMEOUT) as session:
+                while next_url and page < max_pages:
+                    page += 1
+                    
+                    async with session.get(next_url, headers=headers) as response:
+                        if response.status == 401:
+                            self.clear_token()
+                            raise Exception("Token expired. Please login again.")
+                        
+                        if response.status != 200:
+                            error_text = await response.text()
+                            raise Exception(f"Erro ao buscar mensagens: {error_text}")
+                        
+                        data = await response.json()
+                        
+                        # Extrai mensagens
+                        results = data.get("results", [])
+                        all_messages.extend(results)
+                        
+                        print(f"[Nexus]   Página {page}: {len(results)} mensagens")
+                        
+                        # Próxima página
+                        next_url = self._fix_url_scheme(data.get("next"))
+                        
+                        if not results:
+                            break
+                
+                print(f"[Nexus] ✅ Total: {len(all_messages)} mensagens")
+                return all_messages
+                
+        except asyncio.TimeoutError:
+            raise Exception("Timeout ao conectar com o Nexus.")
+        except aiohttp.ClientError as e:
+            raise Exception(f"Erro de conexão com o Nexus: {str(e)}")
+
+    async def get_message_traces(
+        self,
+        project_uuid: str,
+        log_id: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Busca os traces/logs de uma mensagem específica do agente.
+        
+        Args:
+            project_uuid: UUID do projeto Weni
+            log_id: ID da mensagem (log_id)
+            
+        Returns:
+            Lista de traces com informações sobre execução do agente
+        """
+        if not self._token:
+            raise Exception("Not authenticated. Please login first.")
+        
+        url = f"{NEXUS_API_URL}/agents/traces/?project_uuid={project_uuid}&log_id={log_id}"
+        
+        print(f"[Nexus] Buscando traces da mensagem {log_id}...")
+        
+        headers = {
+            "Authorization": f"Bearer {self._token}",
+            "Content-Type": "application/json"
+        }
+        
+        connector = aiohttp.TCPConnector(ssl=SSL_CONTEXT)
+        
+        try:
+            async with aiohttp.ClientSession(connector=connector, timeout=DEFAULT_TIMEOUT) as session:
+                async with session.get(url, headers=headers) as response:
+                    if response.status == 401:
+                        self.clear_token()
+                        raise Exception("Token expired. Please login again.")
+                    
+                    if response.status == 404:
+                        print(f"[Nexus] ⚠️ Nenhum trace encontrado para mensagem {log_id}")
+                        return []
+                    
+                    if response.status != 200:
+                        error_text = await response.text()
+                        raise Exception(f"Erro ao buscar traces: {error_text}")
+                    
+                    result = await response.json()
+                    
+                    # Pode retornar lista diretamente ou dentro de um objeto
+                    traces = result if isinstance(result, list) else result.get("results", result)
+                    
+                    print(f"[Nexus] ✅ {len(traces)} traces encontrados")
+                    return traces
+                    
+        except asyncio.TimeoutError:
+            raise Exception("Timeout ao conectar com o Nexus.")
+        except aiohttp.ClientError as e:
+            raise Exception(f"Erro de conexão com o Nexus: {str(e)}")
 
 
 # Instância global

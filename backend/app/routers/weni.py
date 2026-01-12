@@ -2,7 +2,8 @@
 Router para integração com Weni Cloud.
 Permite autenticação OAuth e listagem de projetos.
 """
-from typing import Optional
+from typing import Optional, List
+from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -22,6 +23,21 @@ class TokenExchangeRequest(BaseModel):
     """Request para trocar código por token."""
     code: str
     redirect_uri: Optional[str] = None
+
+
+class ConversationSearchRequest(BaseModel):
+    """Request para buscar conversas no Nexus."""
+    project_uuid: str
+    contact_urn: str
+    days_back: int = 7  # Padrão: últimos 7 dias
+    start_date: Optional[str] = None  # ISO format, opcional
+    end_date: Optional[str] = None  # ISO format, opcional
+
+
+class MessageTracesRequest(BaseModel):
+    """Request para buscar traces de uma mensagem."""
+    project_uuid: str
+    log_id: int
 
 
 # =============================================================================
@@ -281,6 +297,180 @@ async def list_all_projects():
     
     try:
         return await weni_service.get_all_projects()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# =============================================================================
+# NEXUS ENDPOINTS - Conversas
+# =============================================================================
+
+@router.post("/conversations")
+async def search_conversations(request: ConversationSearchRequest):
+    """
+    Busca conversas de um contato no Nexus.
+    
+    - project_uuid: UUID do projeto Weni
+    - contact_urn: URN do contato (ex: ext:5511999999999)
+    - days_back: Dias para trás (padrão 7, máximo 90)
+    - start_date/end_date: Opcionais, formato ISO
+    """
+    if not weni_service.is_connected:
+        raise HTTPException(status_code=401, detail="Not connected to Weni. Please login first.")
+    
+    # Valida days_back (máximo 90 dias / 3 meses)
+    days_back = min(max(request.days_back, 1), 90)
+    
+    # Calcula datas se não fornecidas
+    if request.start_date and request.end_date:
+        start_date = request.start_date
+        end_date = request.end_date
+    else:
+        end_dt = datetime.utcnow()
+        start_dt = end_dt - timedelta(days=days_back)
+        start_date = start_dt.isoformat() + "Z"
+        end_date = end_dt.isoformat() + "Z"
+    
+    try:
+        result = await weni_service.get_conversations(
+            project_uuid=request.project_uuid,
+            contact_urn=request.contact_urn,
+            start_date=start_date,
+            end_date=end_date
+        )
+        return {
+            "success": True,
+            "project_uuid": request.project_uuid,
+            "contact_urn": request.contact_urn,
+            "period": {
+                "start": start_date,
+                "end": end_date,
+                "days": days_back
+            },
+            "data": result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/conversations/messages")
+async def get_conversation_messages(request: ConversationSearchRequest):
+    """
+    Busca todas as mensagens de um contato no período especificado.
+    Usa paginação automática para buscar todas as mensagens.
+    
+    - project_uuid: UUID do projeto Weni
+    - contact_urn: URN do contato
+    - days_back: Dias para trás (padrão 7, máximo 90)
+    """
+    if not weni_service.is_connected:
+        raise HTTPException(status_code=401, detail="Not connected to Weni. Please login first.")
+    
+    # Valida days_back
+    days_back = min(max(request.days_back, 1), 90)
+    
+    # Calcula datas
+    if request.start_date and request.end_date:
+        start_date = request.start_date
+        end_date = request.end_date
+    else:
+        end_dt = datetime.utcnow()
+        start_dt = end_dt - timedelta(days=days_back)
+        start_date = start_dt.isoformat() + "Z"
+        end_date = end_dt.isoformat() + "Z"
+    
+    try:
+        messages = await weni_service.get_conversation_messages(
+            project_uuid=request.project_uuid,
+            contact_urn=request.contact_urn,
+            start_date=start_date,
+            end_date=end_date
+        )
+        return {
+            "success": True,
+            "project_uuid": request.project_uuid,
+            "contact_urn": request.contact_urn,
+            "period": {
+                "start": start_date,
+                "end": end_date,
+                "days": days_back
+            },
+            "total_messages": len(messages),
+            "messages": messages
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/traces")
+async def get_message_traces(request: MessageTracesRequest):
+    """
+    Busca os traces/logs de execução de uma mensagem do agente.
+    
+    - project_uuid: UUID do projeto Weni
+    - log_id: ID da mensagem (obtido na lista de conversas)
+    
+    Returns:
+        Lista de traces mostrando:
+        - Qual agente foi invocado
+        - Quais tools foram executadas
+        - Parâmetros utilizados
+        - Respostas obtidas
+    """
+    if not weni_service.is_connected:
+        raise HTTPException(status_code=401, detail="Not connected to Weni. Please login first.")
+    
+    try:
+        traces = await weni_service.get_message_traces(
+            project_uuid=request.project_uuid,
+            log_id=request.log_id
+        )
+        
+        # Processa traces para extrair informações relevantes
+        processed_traces = []
+        for trace_item in traces:
+            trace_data = trace_item.get("trace", {})
+            config = trace_data.get("config", {})
+            inner_trace = trace_data.get("trace", {})
+            
+            processed = {
+                "agent_name": config.get("agentName", "unknown"),
+                "type": config.get("type", "unknown"),
+                "tool_name": config.get("toolName", ""),
+                "raw_trace": inner_trace
+            }
+            
+            # Extrai informações específicas de tools
+            orchestration = inner_trace.get("orchestrationTrace", {})
+            invocation_input = orchestration.get("invocationInput", {})
+            
+            # Se é uma execução de tool
+            action_group = invocation_input.get("actionGroupInvocationInput", {})
+            if action_group:
+                processed["tool_details"] = {
+                    "action_group": action_group.get("actionGroupName", ""),
+                    "function": action_group.get("function", ""),
+                    "parameters": action_group.get("parameters", [])
+                }
+            
+            # Se é delegação para outro agente
+            collaborator = invocation_input.get("agentCollaboratorInvocationInput", {})
+            if collaborator:
+                processed["delegation"] = {
+                    "target_agent": collaborator.get("agentCollaboratorName", ""),
+                    "input_text": collaborator.get("input", {}).get("text", "")
+                }
+            
+            processed_traces.append(processed)
+        
+        return {
+            "success": True,
+            "project_uuid": request.project_uuid,
+            "log_id": request.log_id,
+            "total_traces": len(processed_traces),
+            "traces": processed_traces,
+            "raw_traces": traces  # Mantém os traces originais também
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
