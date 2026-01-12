@@ -7,19 +7,19 @@ import {
   SettingsModal, 
   RepositoryList, 
   KnowledgeBasePanel, 
-  ChatPanel,
   AgentFinder,
-  IndexPanel,
   DebugPanel,
-  AdminDashboard
+  AdminDashboard,
+  AgentsView,
+  TicketView
 } from './components';
 import { useAppStore } from './stores/appStore';
 
-type TabType = 'repos' | 'knowledge' | 'chat' | 'finder' | 'index' | 'debug';
+type TabType = 'agents' | 'repos' | 'knowledge' | 'finder' | 'debug';
 
 function MainApp() {
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabType>('repos');
+  const [activeTab, setActiveTab] = useState<TabType>('agents');
   const { fetchStatus, status } = useAppStore();
   
   useEffect(() => {
@@ -70,11 +70,10 @@ function MainApp() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2 }}
         >
+          {activeTab === 'agents' && <AgentsView />}
           {activeTab === 'repos' && <RepositoryList />}
           {activeTab === 'knowledge' && <KnowledgeBasePanel />}
-          {activeTab === 'chat' && <ChatPanel />}
           {activeTab === 'finder' && <AgentFinder />}
-          {activeTab === 'index' && <IndexPanel />}
           {activeTab === 'debug' && <DebugPanel />}
         </motion.div>
       </main>
@@ -94,6 +93,7 @@ function App() {
       <Routes>
         <Route path="/" element={<MainApp />} />
         <Route path="/admin/*" element={<AdminDashboard />} />
+        <Route path="/diagnostic/ticket/:ticketId" element={<TicketView />} />
       </Routes>
     </BrowserRouter>
   );

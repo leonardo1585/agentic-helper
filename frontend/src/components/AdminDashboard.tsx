@@ -9,7 +9,6 @@ import {
   Settings,
   DollarSign,
   Zap,
-  Clock,
   CheckCircle,
   XCircle,
   AlertCircle,
@@ -18,7 +17,6 @@ import {
   Eye,
   EyeOff,
   ChevronRight,
-  Calendar,
   Database,
   TrendingUp
 } from 'lucide-react';
@@ -26,8 +24,7 @@ import {
   adminApi, 
   TokenUsageSummary, 
   TokenUsageRecord, 
-  AnalysisHistory,
-  AnalysisRecord 
+  AnalysisHistory
 } from '../services/api';
 import { PromptAdmin } from './PromptAdmin';
 

@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useAppStore } from '../stores/appStore';
+import { WebChat } from './WebChat';
 
 type KBViewType = 'technical' | 'business';
 
@@ -221,18 +222,21 @@ export function KnowledgeBasePanel() {
                   exit={{ opacity: 0, x: -20 }}
                   className="space-y-4"
                 >
-                  {/* Header com nome da pasta */}
+                  {/* Header com nome da pasta e ferramentas */}
                   <div className="card bg-gradient-to-r from-[#00DED2]/5 to-purple-500/5 border-[#00DED2]/20">
-                    <div className="flex items-center gap-3">
-                      <Folder className="w-6 h-6 text-[#00DED2]" />
-                      <div>
-                        <h2 className="font-semibold text-gray-900">
-                          {getFolderName(currentKB.repository_name)}
-                        </h2>
-                        <p className="text-sm text-gray-500 font-mono">
-                          {currentKB.repository_name}
-                        </p>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Folder className="w-6 h-6 text-[#00DED2]" />
+                        <div>
+                          <h2 className="font-semibold text-gray-900">
+                            {getFolderName(currentKB.repository_name)}
+                          </h2>
+                          <p className="text-sm text-gray-500 font-mono">
+                            {currentKB.repository_name}
+                          </p>
+                        </div>
                       </div>
+                      
                     </div>
                   </div>
                   
@@ -259,6 +263,9 @@ export function KnowledgeBasePanel() {
           </div>
         </div>
       )}
+      
+      {/* WebChat flutuante */}
+      <WebChat contextKB={currentKB?.repository_name} />
     </div>
   );
 }
@@ -497,7 +504,7 @@ function TechnicalView({ kb }: { kb: any }) {
                 <p className="text-sm text-gray-600">{ep.description}</p>
                 {ep.parameters?.length > 0 && (
                   <p className="text-xs text-gray-500 mt-1">
-                    Parâmetros: {ep.parameters.join(', ')}
+                    Parâmetros: {ep.parameters.map((p: any) => typeof p === 'string' ? p : p.name).join(', ')}
                   </p>
                 )}
               </div>
@@ -629,10 +636,12 @@ function TechnicalView({ kb }: { kb: any }) {
             Variáveis de Ambiente ({tech.environment_variables.length})
           </h3>
           <div className="grid gap-2">
-            {tech.environment_variables.map((v: string, i: number) => {
-              const parts = v.split(':');
-              const name = parts[0].trim();
-              const description = parts.slice(1).join(':').trim();
+            {tech.environment_variables.map((v: any, i: number) => {
+              // Suporta string ou objeto com name/purpose
+              const name = typeof v === 'string' ? v.split(':')[0].trim() : v.name;
+              const description = typeof v === 'string' 
+                ? v.split(':').slice(1).join(':').trim() 
+                : v.purpose || v.description;
               
               return (
                 <div key={i} className="flex items-start gap-3 p-2 rounded-lg bg-amber-50 border border-amber-200">

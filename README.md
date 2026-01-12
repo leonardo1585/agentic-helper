@@ -1,8 +1,8 @@
-# 🤖 Agentic Helper v1.0
+# 🤖 Agentic Helper v2.0
 
-Uma ferramenta poderosa para gerenciar, analisar e criar bases de conhecimento de repositórios de agentes de IA.
+Uma plataforma completa para **criar, gerenciar e analisar agentes de IA inteligentes**.
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-2.0.0-blue)
 ![Python](https://img.shields.io/badge/python-3.10+-green)
 ![Node](https://img.shields.io/badge/node-18+-green)
 
@@ -10,6 +10,7 @@ Uma ferramenta poderosa para gerenciar, analisar e criar bases de conhecimento d
 
 ## 📋 Índice
 
+- [Novidades v2.0](#-novidades-v20)
 - [Funcionalidades](#-funcionalidades)
 - [Arquitetura](#-arquitetura)
 - [Requisitos](#-requisitos)
@@ -22,7 +23,37 @@ Uma ferramenta poderosa para gerenciar, analisar e criar bases de conhecimento d
 
 ---
 
+## 🎉 Novidades v2.0
+
+### 🆕 Criação de Agentes
+- **Wizard com IA**: Crie agentes descrevendo o objetivo e a IA sugere instruções e habilidades
+- **Editor YAML**: Edição direta do `weni.yaml` com validação automática
+- **Estrutura de Projeto**: Cada agente tem sua pasta com tools organizadas
+
+### 🔧 Geração de Ferramentas (Tools)
+- **Biblioteca Oficial**: 12+ tools prontas para uso (VTEX, Zendesk, Correios, etc.)
+- **Gerador via IA**: Crie tools a partir de documentação de APIs ou URLs
+- **Código Pronto**: Python gerado seguindo as melhores práticas
+
+### 📦 Gerenciamento de Projetos
+- **CRUD Completo**: Criar, editar, deletar projetos
+- **Versionamento**: Controle de versão local de cada agente
+- **Multi-projeto**: Gerencie vários agentes simultaneamente
+
+---
+
 ## ✨ Funcionalidades
+
+### 🤖 Gerenciamento de Projetos
+- **Criação de Agentes**: Wizard com preview IA para criar novos agentes
+- **Editor YAML**: Edição direta do `weni.yaml` com validação
+- **Estrutura Organizada**: Projetos com tools separadas por diretório
+
+### 🔧 Biblioteca de Ferramentas (Tools)
+- **12+ Tools Oficiais**: VTEX, Zendesk, Google Sheets, Correios, Intelipost, WhatsApp, etc.
+- **Gerador via URL**: Cria tools a partir de documentação de APIs
+- **Gerador via Texto**: Cole a documentação e gere o código
+- **Categorias**: E-commerce, Suporte, Logística, Messaging, Data, Integration
 
 ### 📦 Gerenciamento de Repositórios
 - Listagem de todos os repositórios GitHub acessíveis
@@ -67,33 +98,31 @@ Uma ferramenta poderosa para gerenciar, analisar e criar bases de conhecimento d
 ## 🏗 Arquitetura
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      Frontend (React)                        │
-│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌────────┐│
-│  │  Repos  │ │ Análise │ │  Chat   │ │ Busca   │ │ Admin  ││
-│  └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘ └───┬────┘│
-└───────┼──────────┼──────────┼──────────┼───────────┼──────┘
-        │          │          │          │           │
-        ▼          ▼          ▼          ▼           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Backend (FastAPI)                         │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐        │
-│  │ GitHub API   │ │  AI Service  │ │Vector Service│        │
-│  │  (Repos)     │ │ (OpenAI/     │ │  (ChromaDB)  │        │
-│  │              │ │  Gemini/     │ │              │        │
-│  │              │ │  Anthropic)  │ │              │        │
-│  └──────────────┘ └──────────────┘ └──────────────┘        │
-│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐        │
-│  │Agent Service │ │Prompt Service│ │Metrics Svc   │        │
-│  │  (Análise)   │ │  (Prompts)   │ │ (Histórico)  │        │
-│  └──────────────┘ └──────────────┘ └──────────────┘        │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Frontend (React/Vite)                         │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────────────┐│
+│  │Projects │ │ Tools   │ │Analyzer │ │  Chat   │ │   Admin/Debug   ││
+│  └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘ └───────┬─────────┘│
+└───────┼──────────┼──────────┼──────────┼─────────────────┼──────────┘
+        │          │          │          │                 │
+        ▼          ▼          ▼          ▼                 ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                       Backend (FastAPI)                              │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌─────────────┐ │
+│  │ ProjectsAPI  │ │  Tools API   │ │  GitHub API  │ │  Chat API   │ │
+│  │  (weni.yaml) │ │  (Generate)  │ │  (Repos)     │ │  (RAG)      │ │
+│  └──────────────┘ └──────────────┘ └──────────────┘ └─────────────┘ │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌─────────────┐ │
+│  │  AI Service  │ │VectorService │ │AgentAnalyzer │ │  Metrics    │ │
+│  │ (Multi-LLM)  │ │  (ChromaDB)  │ │  (KB Gen)    │ │  (History)  │ │
+│  └──────────────┘ └──────────────┘ └──────────────┘ └─────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
         │                    │                    │
         ▼                    ▼                    ▼
    ┌─────────┐        ┌───────────┐        ┌───────────┐
    │  JSON   │        │  ChromaDB │        │   APIs    │
-   │ (Config,│        │  (Vetores)│        │ (OpenAI,  │
-   │  KBs)   │        │           │        │  Gemini)  │
+   │(Config) │        │ (Vectors) │        │ (OpenAI,  │
+   │         │        │           │        │  Gemini)  │
    └─────────┘        └───────────┘        └───────────┘
 ```
 
@@ -185,14 +214,35 @@ npm run dev
 
 ### 1. Configuração Inicial
 
-1. Clique no ícone de **engrenagem** (⚙️) no header
+1. Clique no ícone de **engrenagem** (⚙️) no menu lateral
 2. Insira seu **GitHub Token** (necessário para listar repositórios)
 3. Selecione o **Provedor de IA** (OpenAI, Gemini ou Anthropic)
 4. Insira a **API Key** do provedor escolhido
 5. Selecione o **Modelo** desejado
 6. Clique em **Salvar**
 
-### 2. Análise de Repositórios
+### 2. Criar Novo Projeto (v2.0)
+
+1. Na aba **Projetos**, clique em **"+ Novo Projeto"**
+2. Preencha o **Nome** do agente
+3. (Opcional) Insira o **UUID** do projeto na Weni Cloud
+4. Descreva o **Objetivo** do agente
+5. Clique em **"Gerar Preview com IA"**
+6. Revise as instruções e habilidades sugeridas
+7. Clique em **"Aprovar e Criar"**
+
+### 3. Adicionar Ferramentas (Tools) - v2.0
+
+1. Vá para a aba **"Ferramentas"**
+2. Explore a **Biblioteca Oficial** por categoria
+3. Clique em uma tool para ver detalhes e gerar código
+4. Ou clique em **"Gerar Ferramenta"** para criar via IA:
+   - Selecione o projeto de destino
+   - Cole documentação ou URL da API
+   - Clique em **"Gerar Código"**
+5. Salve a tool no projeto
+
+### 4. Análise de Repositórios
 
 1. Na aba **Repositórios**, os repos com "agents" são listados automaticamente
 2. Use o campo de busca para filtrar repositórios específicos
@@ -202,14 +252,14 @@ npm run dev
 6. Clique em **Iniciar Análise**
 7. Acompanhe o progresso na lista de repositórios
 
-### 3. Visualização da Base de Conhecimento
+### 5. Visualização da Base de Conhecimento
 
 1. Vá para a aba **Base de Conhecimento**
 2. Selecione entre visão **Técnica** ou **Negócio**
 3. Navegue pelos repositórios e pastas analisados
 4. Visualize APIs, integrações, fluxos, regras, etc.
 
-### 4. Busca de Agentes
+### 6. Busca de Agentes
 
 1. Vá para a aba **Buscar Agentes**
 2. Primeiro, clique em **Indexar Agentes** na aba Indexação
@@ -217,14 +267,14 @@ npm run dev
 4. O sistema buscará agentes similares já existentes
 5. Veja recomendações e porcentagem de cobertura
 
-### 5. Chat
+### 7. Chat
 
 1. Vá para a aba **Chat**
 2. Selecione o modo (Técnico/Negócio)
 3. Ative o **RAG** para respostas contextualizadas
 4. Faça perguntas sobre os agentes analisados
 
-### 6. Debug
+### 8. Debug
 
 1. Vá para a aba **Debug**
 2. Selecione o repositório e pasta do agente
@@ -252,32 +302,81 @@ GEMINI_API_KEY=AIzaxxxxxxxxxxxxx
 
 # Anthropic
 ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxx
+
+# Weni Cloud Integration (opcional - valores padrão funcionam para produção)
+WENI_API_URL=https://api.weni.ai
+WENI_ACCOUNTS_URL=https://accounts.weni.ai
+WENI_CLIENT_ID=weni-cli
+WENI_REALM=weni
 ```
 
 ### Arquivos de Configuração
 
-- `backend/app_config.json` - Configurações persistentes (tokens, modelo)
-- `backend/knowledge_bases.json` - Bases de conhecimento geradas
-- `backend/prompts.json` - Prompts customizados
-- `backend/analysis_history.json` - Histórico de análises
-- `backend/metrics.json` - Métricas de uso
+- `app_config.json` - Configurações persistentes (tokens, modelo)
+- `knowledge_bases.json` - Bases de conhecimento geradas
+- `prompts.json` - Prompts customizados
+- `analysis_history.json` - Histórico de análises
+- `metrics.json` - Métricas de uso
+- `projects/` - Diretório com projetos de agentes (v2.0)
 
 ---
 
 ## 🔌 API
 
-### Principais Endpoints
+### Projetos (v2.0)
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| GET | `/api/projects` | Lista projetos |
+| POST | `/api/projects` | Cria projeto |
+| GET | `/api/projects/{uuid}` | Obtém projeto |
+| PATCH | `/api/projects/{uuid}` | Atualiza projeto |
+| DELETE | `/api/projects/{uuid}` | Deleta projeto |
+| GET | `/api/projects/{uuid}/yaml` | Obtém YAML |
+| POST | `/api/projects/{uuid}/yaml` | Salva YAML |
+| GET | `/api/projects/{uuid}/tools` | Lista tools |
+| POST | `/api/projects/{uuid}/tools` | Adiciona tool |
+| DELETE | `/api/projects/{uuid}/tools/{slug}` | Remove tool |
+| POST | `/api/projects/preview` | Preview com IA |
+
+### Ferramentas (v2.0)
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| GET | `/api/tools/official` | Lista tools oficiais |
+| GET | `/api/tools/official/{slug}` | Obtém tool oficial |
+| POST | `/api/tools/official/{slug}/generate` | Gera código da tool |
+| POST | `/api/tools/generate` | Gera tool via IA |
+| POST | `/api/tools/improve` | Melhora código |
+| GET | `/api/tools/categories` | Lista categorias |
+
+### Repositórios
 
 | Método | Endpoint | Descrição |
 |--------|----------|-----------|
 | GET | `/api/repos` | Lista repositórios |
 | GET | `/api/repos/{owner}/{repo}/folders` | Lista pastas de um repo |
+
+### Análise
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
 | POST | `/api/analysis/analyze/{owner}/{repo}` | Inicia análise |
 | GET | `/api/analysis/knowledge-bases` | Lista bases de conhecimento |
+
+### Chat e Busca
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
 | POST | `/api/analysis/chat` | Chat com contexto |
 | POST | `/api/analysis/debug` | Debug de agente |
 | POST | `/api/search/find-agent` | Busca agentes similares |
 | POST | `/api/search/index-all` | Indexa todas as KBs |
+
+### Admin
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
 | GET | `/api/prompts` | Lista prompts |
 | POST | `/api/prompts` | Cria prompt |
 | GET | `/api/admin/metrics` | Métricas de uso |
@@ -303,7 +402,9 @@ agentic-helper/
 │   │   │   ├── repositories.py    # Endpoints de repos
 │   │   │   ├── search.py          # Endpoints de busca
 │   │   │   ├── prompts.py         # Endpoints de prompts
-│   │   │   └── admin.py           # Endpoints admin
+│   │   │   ├── admin.py           # Endpoints admin
+│   │   │   ├── projects.py        # Endpoints de projetos (v2.0)
+│   │   │   └── tools.py           # Endpoints de tools (v2.0)
 │   │   ├── services/
 │   │   │   ├── ai_service.py      # Integração com IAs
 │   │   │   ├── agent_service.py   # Lógica de análise
@@ -311,7 +412,9 @@ agentic-helper/
 │   │   │   ├── vector_service.py  # ChromaDB/RAG
 │   │   │   ├── prompt_service.py  # Gerenciamento de prompts
 │   │   │   ├── auth_service.py    # Autenticação
-│   │   │   └── metrics_service.py # Métricas
+│   │   │   ├── metrics_service.py # Métricas
+│   │   │   ├── project_service.py # Gerenciamento de projetos (v2.0)
+│   │   │   └── tool_service.py    # Geração de tools (v2.0)
 │   │   └── main.py                # App FastAPI
 │   ├── requirements.txt
 │   └── venv/
@@ -328,7 +431,9 @@ agentic-helper/
 │   │   │   ├── DebugPanel.tsx
 │   │   │   ├── PromptAdmin.tsx
 │   │   │   ├── AdminDashboard.tsx
-│   │   │   └── SettingsModal.tsx
+│   │   │   ├── SettingsModal.tsx
+│   │   │   ├── ProjectsView.tsx   # Projetos (v2.0)
+│   │   │   └── ToolsView.tsx      # Ferramentas (v2.0)
 │   │   ├── services/
 │   │   │   └── api.ts             # Cliente API
 │   │   ├── stores/
@@ -337,6 +442,17 @@ agentic-helper/
 │   │   └── main.tsx
 │   ├── package.json
 │   └── vite.config.ts
+├── projects/                       # Projetos de agentes (v2.0)
+│   └── accounts/
+│       └── default/
+│           └── {agent-slug}/
+│               ├── weni.yaml
+│               ├── requirements.txt
+│               ├── README.md
+│               └── tools/
+│                   └── {tool-slug}/
+│                       ├── main.py
+│                       └── requirements.txt
 ├── start.sh                        # Script de inicialização
 └── README.md
 ```
@@ -353,6 +469,16 @@ agentic-helper/
 ---
 
 ## 📝 Changelog
+
+### v2.0.0 (2025-01-06)
+- ✅ **Criação de Agentes** com wizard + IA
+- ✅ **Editor YAML** com validação
+- ✅ **Biblioteca de Tools Oficiais** (12+ tools)
+- ✅ **Gerador de Tools via IA** (documentação/URL)
+- ✅ **Gerenciamento de Projetos** (CRUD completo)
+- ✅ **Estrutura de Projetos** organizada
+- ✅ Nova sidebar com seção "Criação"
+- ✅ Interface modernizada
 
 ### v1.0.0 (2025-01-06)
 - ✅ Gerenciamento de repositórios GitHub

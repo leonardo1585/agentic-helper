@@ -2,12 +2,83 @@
 Serviço de Vector Store para busca semântica de agentes.
 Usa ChromaDB para armazenamento local e embeddings para busca.
 """
+import os
+# Silencia warning do HuggingFace tokenizers sobre fork
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 import json
+import threading
 from typing import List, Dict, Optional, Any
 from pathlib import Path
 import hashlib
 
 from ..core import settings
+
+
+# Cache global do modelo (singleton)
+_MODEL_CACHE = {
+    "model": None,
+    "loading": False,
+    "loaded": False,
+    "error": None
+}
+_MODEL_LOCK = threading.Lock()
+
+# Diretório de cache dos modelos
+MODELS_CACHE_DIR = Path(__file__).parent.parent.parent / "models_cache"
+
+
+def preload_embedding_model():
+    """
+    Pré-carrega o modelo de embeddings em background.
+    Chamado no startup da aplicação.
+    """
+    def _load():
+        global _MODEL_CACHE
+        with _MODEL_LOCK:
+            if _MODEL_CACHE["loaded"] or _MODEL_CACHE["loading"]:
+                return
+            _MODEL_CACHE["loading"] = True
+        
+        try:
+            import os
+            os.environ.setdefault('HF_HUB_DOWNLOAD_TIMEOUT', '120')
+            
+            from sentence_transformers import SentenceTransformer
+            
+            MODELS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            
+            model = SentenceTransformer(
+                'all-MiniLM-L6-v2',
+                cache_folder=str(MODELS_CACHE_DIR)
+            )
+            
+            with _MODEL_LOCK:
+                _MODEL_CACHE["model"] = model
+                _MODEL_CACHE["loaded"] = True
+                _MODEL_CACHE["loading"] = False
+            
+            print("✅ Modelo de embeddings carregado (background)")
+            
+        except Exception as e:
+            with _MODEL_LOCK:
+                _MODEL_CACHE["error"] = str(e)
+                _MODEL_CACHE["loading"] = False
+            print(f"⚠️ Erro ao carregar modelo em background: {e}")
+    
+    # Inicia em thread separada para não bloquear startup
+    thread = threading.Thread(target=_load, daemon=True)
+    thread.start()
+    return thread
+
+
+def get_model_status() -> dict:
+    """Retorna o status atual do modelo."""
+    return {
+        "loaded": _MODEL_CACHE["loaded"],
+        "loading": _MODEL_CACHE["loading"],
+        "error": _MODEL_CACHE["error"]
+    }
 
 
 class VectorService:
@@ -16,7 +87,6 @@ class VectorService:
     def __init__(self):
         self._client = None
         self._collection = None
-        self._embedding_fn = None
         self._initialized = False
     
     def _initialize(self):
@@ -51,24 +121,71 @@ class VectorService:
             print(f"⚠️ Erro ao inicializar Vector Store: {e}")
             raise
     
+    def _get_embedding_model(self):
+        """Obtém o modelo de embeddings, aguardando se necessário."""
+        global _MODEL_CACHE
+        
+        # Se já está carregado, retorna
+        if _MODEL_CACHE["loaded"] and _MODEL_CACHE["model"]:
+            return _MODEL_CACHE["model"]
+        
+        # Se teve erro, relança
+        if _MODEL_CACHE["error"]:
+            raise RuntimeError(f"Modelo não disponível: {_MODEL_CACHE['error']}")
+        
+        # Se está carregando, aguarda (com timeout)
+        if _MODEL_CACHE["loading"]:
+            import time
+            timeout = 120  # 2 minutos max
+            waited = 0
+            while _MODEL_CACHE["loading"] and waited < timeout:
+                time.sleep(0.5)
+                waited += 0.5
+            
+            if _MODEL_CACHE["loaded"] and _MODEL_CACHE["model"]:
+                return _MODEL_CACHE["model"]
+        
+        # Carregamento síncrono como fallback
+        with _MODEL_LOCK:
+            if _MODEL_CACHE["loaded"] and _MODEL_CACHE["model"]:
+                return _MODEL_CACHE["model"]
+            
+            try:
+                import os
+                os.environ.setdefault('HF_HUB_DOWNLOAD_TIMEOUT', '120')
+                
+                from sentence_transformers import SentenceTransformer
+                
+                MODELS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                
+                print("⏳ Carregando modelo de embeddings (primeira execução)...")
+                model = SentenceTransformer(
+                    'all-MiniLM-L6-v2',
+                    cache_folder=str(MODELS_CACHE_DIR)
+                )
+                
+                _MODEL_CACHE["model"] = model
+                _MODEL_CACHE["loaded"] = True
+                print("✅ Modelo de embeddings carregado")
+                
+                return model
+                
+            except Exception as e:
+                _MODEL_CACHE["error"] = str(e)
+                print(f"❌ Erro ao carregar modelo: {e}")
+                print("💡 Execute 'python setup_models.py' para baixar o modelo offline")
+                raise RuntimeError(f"Não foi possível carregar o modelo. Erro: {e}")
+    
     def _generate_embedding(self, text: str) -> List[float]:
         """Gera embedding para um texto usando sentence-transformers."""
-        if self._embedding_fn is None:
-            try:
-                from sentence_transformers import SentenceTransformer
-                # Modelo leve e eficiente para português/inglês
-                self._embedding_fn = SentenceTransformer('all-MiniLM-L6-v2')
-                print("✅ Modelo de embeddings carregado")
-            except Exception as e:
-                print(f"⚠️ Erro ao carregar modelo de embeddings: {e}")
-                raise
-        
-        embedding = self._embedding_fn.encode(text, convert_to_numpy=True)
+        model = self._get_embedding_model()
+        embedding = model.encode(text, convert_to_numpy=True)
         return embedding.tolist()
     
     def _create_agent_document(self, kb_name: str, kb_data: dict) -> dict:
         """Cria documento indexável a partir de uma knowledge base.
         IMPORTANTE: O texto deve descrever O QUE o agente FAZ, não apenas suas tecnologias.
+        Inclui: instructions, guardrails, handlers, integrações, etc.
         """
         technical = kb_data.get("technical", {}) or {}
         business = kb_data.get("business", {}) or {}
@@ -85,6 +202,28 @@ class VectorService:
         ]
         
         if technical:
+            # PRIORIDADE MÁXIMA: Instructions do agent_definition (descrevem comportamento do agente)
+            agent_instructions = technical.get("agent_instructions", [])
+            if agent_instructions:
+                # Join das instruções com separador claro
+                instructions_text = "; ".join(agent_instructions[:20])  # Limite de 20 instruções
+                text_parts.append(f"Instruções do agente: {instructions_text}")
+            
+            # Guardrails (regras de segurança/limitações)
+            agent_guardrails = technical.get("agent_guardrails", [])
+            if agent_guardrails:
+                guardrails_text = "; ".join(agent_guardrails[:10])
+                text_parts.append(f"Limitações e regras: {guardrails_text}")
+            
+            # Nome e descrição do agente se disponíveis
+            agent_name = technical.get("agent_name", "")
+            if agent_name:
+                text_parts.append(f"Nome do agente: {agent_name}")
+            
+            agent_description = technical.get("agent_description", "")
+            if agent_description:
+                text_parts.append(f"Descrição: {agent_description}")
+            
             if technical.get("technical_summary"):
                 text_parts.append(f"O que este agente faz: {technical['technical_summary']}")
             
@@ -210,6 +349,13 @@ class VectorService:
         
         document_text = "\n".join(text_parts)
         
+        # Extrai nome amigável do agente para exibição
+        agent_display_name = ""
+        if technical:
+            agent_display_name = technical.get("agent_name", "") or ""
+        if not agent_display_name and business:
+            agent_display_name = business.get("name", "") or ""
+        
         return {
             "id": hashlib.md5(kb_name.encode()).hexdigest(),
             "text": document_text,
@@ -217,6 +363,7 @@ class VectorService:
                 "kb_name": kb_name,
                 "repo_name": repo_name,
                 "folder_name": folder_name,
+                "agent_name": agent_display_name,  # Nome amigável do agente
                 "has_technical": bool(technical),
                 "has_business": bool(business),
             }
@@ -295,14 +442,18 @@ class VectorService:
             if results and results["ids"] and results["ids"][0]:
                 for i, id_ in enumerate(results["ids"][0]):
                     distance = results["distances"][0][i] if results["distances"] else 1.0
-                    # ChromaDB usa distância L2, convertemos para similaridade
-                    similarity = 1 / (1 + distance)
+                    # ChromaDB usa distância L2, convertemos para similaridade com escala mais intuitiva
+                    # Fórmula exponencial: distância 0 = 100%, distância 1 = ~60%, distância 2 = ~37%
+                    import math
+                    similarity = math.exp(-distance * 0.5)
                     
                     if similarity >= min_similarity:
+                        metadata = results["metadatas"][0][i]
                         agents.append({
-                            "kb_name": results["metadatas"][0][i]["kb_name"],
-                            "repo_name": results["metadatas"][0][i]["repo_name"],
-                            "folder_name": results["metadatas"][0][i]["folder_name"],
+                            "kb_name": metadata["kb_name"],
+                            "repo_name": metadata["repo_name"],
+                            "folder_name": metadata["folder_name"],
+                            "agent_name": metadata.get("agent_name", ""),  # Nome amigável
                             "similarity": round(similarity, 3),
                             "document": results["documents"][0][i]
                         })

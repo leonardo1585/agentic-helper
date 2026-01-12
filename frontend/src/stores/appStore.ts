@@ -52,6 +52,7 @@ interface AppState {
   fetchKnowledgeBases: () => Promise<void>;
   loadKnowledgeBase: (repoName: string) => Promise<void>;
   sendMessage: (message: string) => Promise<void>;
+  sendMessageWithContext: (message: string, contextKB?: string) => Promise<void>;
   setChatMode: (mode: ChatMode) => void;
   setUseRag: (useRag: boolean) => void;
   clearChat: () => void;
@@ -293,7 +294,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }));
       
       // Inicia polling do status
-      let pollingInterval: NodeJS.Timeout | null = null;
+      let pollingInterval: ReturnType<typeof setInterval> | null = null;
       let analysisComplete = false;
       
       const pollStatus = async () => {
@@ -304,7 +305,7 @@ export const useAppStore = create<AppState>((set, get) => ({
               analysisProgress: new Map(state.analysisProgress).set(analysisName, {
                 status: status.status,
                 progress: status.progress,
-                message: status.message
+                message: status.message || ''
               })
             }));
           }
@@ -469,6 +470,98 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     } catch (err) {
       // Error already handled by onError callback
+      const errorMsg = (err as Error).message;
+      set(state => ({
+        messages: state.messages.map(m => 
+          m.id === assistantId && !m.content
+            ? { ...m, content: `Erro: ${errorMsg}` }
+            : m
+        )
+      }));
+    } finally {
+      set({ isChatLoading: false });
+    }
+  },
+  
+  sendMessageWithContext: async (message, contextKB) => {
+    const { chatMode } = get();
+    
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: message,
+      timestamp: new Date()
+    };
+    
+    set(state => ({
+      messages: [...state.messages, userMessage],
+      isChatLoading: true,
+      error: null
+    }));
+    
+    const assistantId = (Date.now() + 1).toString();
+    
+    set(state => ({
+      messages: [...state.messages, {
+        id: assistantId,
+        role: 'assistant',
+        content: '',
+        timestamp: new Date()
+      }]
+    }));
+    
+    try {
+      // Se tiver contexto, usa chat focado na KB específica
+      if (contextKB) {
+        await api.chatWithKB(
+          message,
+          contextKB,
+          chatMode,
+          (chunk) => {
+            set(state => ({
+              messages: state.messages.map(m => 
+                m.id === assistantId 
+                  ? { ...m, content: m.content + chunk }
+                  : m
+              )
+            }));
+          },
+          (error) => {
+            set(state => ({
+              messages: state.messages.map(m => 
+                m.id === assistantId 
+                  ? { ...m, content: `Erro: ${error}` }
+                  : m
+              )
+            }));
+          }
+        );
+      } else {
+        // Sem contexto, usa RAG normal
+        await api.chatRagStream(
+          message,
+          chatMode,
+          (chunk) => {
+            set(state => ({
+              messages: state.messages.map(m => 
+                m.id === assistantId 
+                  ? { ...m, content: m.content + chunk }
+                  : m
+              )
+            }));
+          },
+          (error) => {
+            set(state => ({
+              messages: state.messages.map(m => 
+                m.id === assistantId 
+                  ? { ...m, content: `Erro: ${error}` }
+                  : m
+              )
+            }));
+          }
+        );
+      }
+    } catch (err) {
       const errorMsg = (err as Error).message;
       set(state => ({
         messages: state.messages.map(m => 

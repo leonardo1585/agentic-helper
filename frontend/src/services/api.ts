@@ -137,6 +137,7 @@ export interface SearchResult {
   kb_name: string;
   repo_name: string;
   folder_name: string;
+  agent_name?: string;  // Nome amigável do agente
   similarity: number;
   document: string;
 }
@@ -157,6 +158,169 @@ export interface FindAgentResult {
   partial_matches?: string[];
   missing_features?: string[];
   explanation?: string;
+}
+
+// ============================================
+// DIFF DE ATUALIZAÇÕES
+// ============================================
+
+export interface CrossReference {
+  file_path: string;
+  line_number: number;
+  line_content: string;
+  context?: string;
+}
+
+export interface ChangeItem {
+  type: 'added' | 'removed' | 'modified';
+  category: string;
+  description: string;
+  old_value?: string;
+  new_value?: string;
+  impact: 'low' | 'medium' | 'high';
+  // Detalhes do diff do GitHub
+  additions?: number;
+  deletions?: number;
+  patch?: string;  // O diff real do arquivo
+  // Referências cruzadas - onde variáveis removidas são usadas
+  removed_identifiers?: string[];  // Variáveis REALMENTE removidas
+  format_changed_identifiers?: string[];  // Variáveis com MUDANÇA DE FORMATO
+  cross_references?: CrossReference[];
+  has_breaking_change?: boolean;  // Variável removida é usada em outro lugar
+  has_format_change?: boolean;  // Houve mudança de formato de dados
+}
+
+export interface UpdatesDiff {
+  repository_name: string;
+  from_snapshot_id: string;
+  from_timestamp: string;
+  to_snapshot_id: string;
+  to_timestamp: string;
+  summary: string;
+  total_changes: number;
+  changes: ChangeItem[];
+  instructions_changes: ChangeItem[];
+  code_changes: ChangeItem[];
+  config_changes: ChangeItem[];
+  impact_level: 'low' | 'medium' | 'high' | 'critical';
+  impact_summary: string;
+  // Análise inteligente da IA
+  ai_analysis?: string;
+  potential_issues?: string[];
+  // Commits
+  from_commit_sha?: string;
+  to_commit_sha?: string;
+}
+
+// ============================================
+// DIAGNÓSTICO DE PROBLEMAS
+// ============================================
+
+export interface CommitInfo {
+  sha: string;
+  message: string;
+  author: string;
+  date: string;
+  files_changed: string[];
+  additions: number;
+  deletions: number;
+}
+
+export interface ProblemCorrelation {
+  change_type: string;
+  change_description: string;
+  file_or_location: string;
+  commit_sha?: string;
+  commit_date?: string;
+  commit_author?: string;
+  correlation_score: number;
+  reasoning: string;
+}
+
+export interface CodeLocation {
+  file: string;
+  line_removed?: string;  // Código que foi removido
+  line_added?: string;    // Código que foi adicionado
+  explanation?: string;   // Por que essa mudança causou o problema
+}
+
+export interface DiagnosticResult {
+  repository_name: string;
+  problem_description: string;
+  analyzed_at: string;
+  // Veredito principal
+  found_cause: boolean;
+  is_refactoring?: boolean;  // Se foi apenas uma refatoração (não é problema real)
+  verdict: string;
+  // Detalhes
+  diagnosis_summary: string;
+  confidence: 'low' | 'medium' | 'high';
+  root_cause?: string;
+  root_cause_type?: 'instruction' | 'code' | 'config' | 'external' | 'unknown';
+  // Localização exata do código problemático
+  code_location?: CodeLocation;
+  correlations: ProblemCorrelation[];
+  top_suspects: string[];
+  recent_commits: CommitInfo[];
+  instruction_changes: string[];
+  code_changes: string[];
+  recommendations: string[];
+  next_steps: string[];
+}
+
+// Resultado do Debug (preservado integralmente)
+export interface DebugResultData {
+  problem_summary?: string;
+  root_cause?: string;
+  data_flow?: string;
+  data_analysis?: {
+    seller_info?: string;
+    data_returned?: string;
+    data_expected?: string;
+    discrepancy?: string;
+  };
+  tool_logic_issue?: string;
+  affected_handlers?: string[];
+  affected_code_locations?: string[];
+  evidence?: string[];
+  suggestions?: string[];
+  confidence?: 'low' | 'medium' | 'high';
+  agent_definition_found?: boolean;
+  knowledge_base_found?: boolean;
+}
+
+// Ticket de diagnóstico para compartilhamento
+export interface DiagnosticTicket {
+  id: string;  // Ex: "DBG-2024-0001"
+  created_at: string;
+  created_by: string;
+  status: 'open' | 'investigating' | 'resolved' | 'closed';
+  ticket_type: 'diagnostic' | 'debug';  // Tipo do ticket
+  repository_name: string;
+  problem_description: string;
+  error_message?: string;
+  diagnosis_result?: DiagnosticResult;  // Para tickets de diagnóstico
+  debug_result?: DebugResultData;  // Para tickets de debug (preservado original)
+  debug_log: string;  // Log formatado para compartilhamento
+  debug_code?: string;
+  affected_files: string[];
+  notes: string[];
+  share_url?: string;
+}
+
+export interface DiagnosticHistory {
+  total: number;
+  tickets: DiagnosticTicket[];
+}
+
+export interface CreateTicketRequest {
+  repository_name: string;
+  problem_description: string;
+  error_message?: string;
+  expected_behavior?: string;
+  actual_behavior?: string;
+  days_lookback?: number;
+  created_by?: string;
 }
 
 class ApiService {
@@ -202,7 +366,7 @@ class ApiService {
 
   async updateConfig(config: {
     github_token?: string;
-    ai_provider?: 'openai' | 'gemini';
+    ai_provider?: 'openai' | 'gemini' | 'anthropic';
     ai_api_key?: string;
     ai_model?: string;
   }): Promise<{ message: string }> {
@@ -401,6 +565,77 @@ class ApiService {
     }, 120000);
   }
 
+  // Criar repositório a partir de agente existente
+  async createRepoFromAgent(data: {
+    name: string;
+    description?: string;
+    source_repo: string;
+    source_folder: string;
+    team_slug?: string;
+    private?: boolean;
+  }): Promise<{
+    success: boolean;
+    repository: {
+      name: string;
+      full_name: string;
+      url: string;
+      clone_url: string;
+    };
+    copy_result: {
+      files_copied: number;
+      errors: string[];
+    };
+    message: string;
+  }> {
+    return this.request('/repositories/create-from-agent', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, 180000); // 3 min timeout
+  }
+
+  // Listar times da organização
+  async listOrgTeams(org: string = 'weni-ai'): Promise<{ teams: Array<{ id: number; name: string; slug: string }> }> {
+    return this.request(`/repositories/org/${org}/teams`);
+  }
+
+  // Listar repositórios da organização (apenas -agents)
+  async listOrgRepos(org: string = 'weni-ai', filterAgents: boolean = true): Promise<{
+    repositories: Array<{
+      name: string;
+      full_name: string;
+      description: string | null;
+      url: string;
+      private: boolean;
+    }>
+  }> {
+    return this.request(`/repositories/org/${org}/repos?filter_agents=${filterAgents}`);
+  }
+
+  // Copiar agente para repositório existente
+  async copyAgentToExisting(data: {
+    target_repo: string;
+    source_repo: string;
+    source_folder: string;
+    target_folder?: string;
+  }): Promise<{
+    success: boolean;
+    repository: {
+      name: string;
+      full_name: string;
+      url: string;
+    };
+    copy_result: {
+      files_copied: number;
+      errors: string[];
+    };
+    message: string;
+  }> {
+    return this.request('/repositories/copy-to-existing', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, 180000);
+  }
+
   async getVectorStats(): Promise<VectorStats> {
     return this.request('/search/stats');
   }
@@ -497,6 +732,81 @@ class ApiService {
     }
   }
 
+  // Chat com contexto de uma KB específica
+  async chatWithKB(
+    message: string,
+    kbName: string,
+    mode: 'technical' | 'business' = 'technical',
+    onChunk: (chunk: string) => void,
+    onError?: (error: string) => void
+  ): Promise<void> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
+
+    try {
+      const response = await fetch(`${API_BASE}/analysis/chat/kb/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message,
+          kb_name: kbName,
+          mode,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error('Erro no chat');
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) return;
+
+      const decoder = new TextDecoder();
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const text = decoder.decode(value);
+        const lines = text.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') return;
+            
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.content) {
+                onChunk(parsed.content);
+              }
+              if (parsed.error && onError) {
+                onError(parsed.error);
+              }
+            } catch {
+              // Ignore parsing errors
+            }
+          }
+        }
+      }
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err instanceof Error) {
+        if (err.name === 'AbortError') {
+          onError?.('Timeout: a requisição demorou muito');
+        } else {
+          onError?.(err.message);
+        }
+      }
+      throw err;
+    }
+  }
+
   // Debug de problemas
   async debugProblem(request: {
     repository: string;
@@ -505,6 +815,128 @@ class ApiService {
     output_json?: string;
   }) {
     return this.request<any>('/analysis/debug', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  // ============================================
+  // DIFF DE ATUALIZAÇÕES (PARA CS)
+  // ============================================
+
+  // Cria snapshot da indexação atual
+  async createSnapshot(repositoryName: string, indexedBy: string = 'system'): Promise<{
+    success: boolean;
+    snapshot_id: string;
+    timestamp: string;
+  }> {
+    return this.request(`/analysis/snapshot/${encodeURIComponent(repositoryName)}?indexed_by=${indexedBy}`, {
+      method: 'POST',
+    });
+  }
+
+  // Lista snapshots de um repositório
+  async getSnapshots(repositoryName: string): Promise<{
+    repository_name: string;
+    total: number;
+    snapshots: Array<{
+      id: string;
+      timestamp: string;
+      indexed_by: string;
+      content_hash: string;
+    }>;
+  }> {
+    return this.request(`/analysis/snapshots/${encodeURIComponent(repositoryName)}`);
+  }
+
+  // Obtém diff entre indexações
+  async getUpdatesDiff(
+    repositoryName: string,
+    fromSnapshot?: string,
+    toSnapshot?: string
+  ): Promise<{
+    has_diff: boolean;
+    message?: string;
+    diff?: UpdatesDiff;
+  }> {
+    let url = `/analysis/updates-diff/${encodeURIComponent(repositoryName)}`;
+    const params = [];
+    if (fromSnapshot) params.push(`from_snapshot=${fromSnapshot}`);
+    if (toSnapshot) params.push(`to_snapshot=${toSnapshot}`);
+    if (params.length > 0) url += '?' + params.join('&');
+    
+    return this.request(url);
+  }
+
+  // ============================================
+  // DIAGNÓSTICO DE PROBLEMAS
+  // ============================================
+
+  // Diagnostica problema e correlaciona com mudanças
+  async diagnoseProblem(request: {
+    repository_name: string;
+    problem_description: string;
+    error_message?: string;
+    expected_behavior?: string;
+    actual_behavior?: string;
+    days_lookback?: number;
+  }): Promise<DiagnosticResult> {
+    return this.request('/analysis/diagnose', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }, 120000); // 2 min timeout
+  }
+
+  // Cria ticket de diagnóstico para compartilhamento
+  async createDiagnosticTicket(request: CreateTicketRequest): Promise<DiagnosticTicket> {
+    return this.request('/analysis/diagnostic/ticket', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    }, 120000);
+  }
+
+  // Busca ticket por ID
+  async getDiagnosticTicket(ticketId: string): Promise<DiagnosticTicket> {
+    return this.request(`/analysis/diagnostic/ticket/${ticketId}`);
+  }
+
+  // Lista histórico de diagnósticos
+  async getDiagnosticHistory(params?: {
+    repository_name?: string;
+    status?: string;
+    limit?: number;
+  }): Promise<DiagnosticHistory> {
+    const queryParams = new URLSearchParams();
+    if (params?.repository_name) queryParams.set('repository_name', params.repository_name);
+    if (params?.status) queryParams.set('status', params.status);
+    if (params?.limit) queryParams.set('limit', params.limit.toString());
+    
+    const query = queryParams.toString();
+    return this.request(`/analysis/diagnostic/history${query ? `?${query}` : ''}`);
+  }
+
+  // Atualiza status do ticket
+  async updateDiagnosticTicket(ticketId: string, status: string, note?: string): Promise<DiagnosticTicket> {
+    return this.request(`/analysis/diagnostic/ticket/${ticketId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status, note }),
+    });
+  }
+
+  // Busca apenas o log de debug do ticket
+  async getDiagnosticTicketLog(ticketId: string): Promise<{ ticket_id: string; debug_log: string; share_url: string }> {
+    return this.request(`/analysis/diagnostic/ticket/${ticketId}/log`);
+  }
+
+  // Cria ticket a partir do resultado do Debug (não faz novo diagnóstico)
+  async createDebugTicket(request: {
+    repository_name: string;
+    problem_description: string;
+    error_message?: string;
+    debug_result: Record<string, unknown>;
+    created_by?: string;
+  }): Promise<DiagnosticTicket> {
+    return this.request('/analysis/diagnostic/debug-ticket', {
       method: 'POST',
       body: JSON.stringify(request),
     });
@@ -675,6 +1107,407 @@ export interface AnalysisHistory {
 }
 
 export const api = new ApiService();
+
+// ============================================
+// PROJECTS AND TOOLS INTERFACES
+// ============================================
+
+export interface Project {
+  uuid: string;
+  title: string;
+  description?: string;
+  org: string;
+  status: string;
+  path: string;
+  tools: ProjectTool[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ProjectTool {
+  [slug: string]: {
+    name: string;
+    description?: string;
+    source: {
+      path: string;
+      entrypoint: string;
+    };
+    parameters: ToolParameter[];
+  };
+}
+
+export interface ToolParameter {
+  name: string;
+  type: string;
+  description: string;
+  required?: boolean;
+}
+
+export interface OfficialTool {
+  slug: string;
+  name: string;
+  description: string;
+  category: string;
+  parameters: ToolParameter[];
+}
+
+export interface GeneratedTool {
+  tool_slug: string;
+  tool_name: string;
+  description: string;
+  main_py: string;
+  requirements_txt: string;
+  parameters: ToolParameter[];
+}
+
+export interface AgentPreview {
+  preview: boolean;
+  source: 'ai' | 'fallback';
+  suggested_config: {
+    name: string;
+    instructions: string | string[];
+    guardrails?: string[];
+    skills: Array<{ name: string; description: string }>;
+  };
+  fallback_reason?: string;
+}
+
+// ============================================
+// PROJECTS SERVICE
+// ============================================
+
+class ProjectsService {
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {},
+    timeoutMs: number = 60000
+  ): Promise<T> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(`${API_BASE}${endpoint}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+        signal: controller.signal,
+        ...options,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Erro desconhecido' }));
+        throw new Error(error.detail || 'Erro na requisição');
+      }
+
+      return response.json();
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new Error('Timeout: a requisição demorou muito');
+      }
+      throw err;
+    }
+  }
+
+  // Projects CRUD
+  async listProjects(): Promise<Project[]> {
+    return this.request('/projects');
+  }
+
+  async getProject(uuid: string): Promise<Project> {
+    return this.request(`/projects/${uuid}`);
+  }
+
+  async createProject(data: {
+    name: string;
+    goal: string;
+    instructions?: string | string[];
+    skills?: Array<{ name: string; description: string }>;
+    uuid?: string;
+  }): Promise<{ status: string; path: string; uuid: string; slug: string }> {
+    return this.request('/projects', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateProject(uuid: string, data: { name?: string }): Promise<{ status: string }> {
+    return this.request(`/projects/${uuid}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteProject(uuid: string): Promise<{ status: string; message: string }> {
+    return this.request(`/projects/${uuid}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Project YAML
+  async getProjectYaml(uuid: string): Promise<{ content: string }> {
+    return this.request(`/projects/${uuid}/yaml`);
+  }
+
+  async updateProjectYaml(uuid: string, content: string): Promise<{ status: string }> {
+    return this.request(`/projects/${uuid}/yaml`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
+  }
+
+  async improveProjectYaml(uuid: string, goal?: string, instructions?: string): Promise<{
+    status: string;
+    original_yaml: string;
+    improved_yaml: string;
+    prompt_used: string;
+  }> {
+    return this.request(`/projects/${uuid}/yaml/improve`, {
+      method: 'POST',
+      body: JSON.stringify({ goal, instructions }),
+    });
+  }
+
+  // Project Tools
+  async listProjectTools(uuid: string): Promise<ProjectTool[]> {
+    return this.request(`/projects/${uuid}/tools`);
+  }
+
+  async addProjectTool(uuid: string, tool: {
+    tool_slug: string;
+    tool_name: string;
+    description?: string;
+    main_py?: string;
+    requirements_txt?: string;
+    parameters?: ToolParameter[];
+  }): Promise<{ status: string; tool_slug: string }> {
+    return this.request(`/projects/${uuid}/tools`, {
+      method: 'POST',
+      body: JSON.stringify(tool),
+    });
+  }
+
+  async deleteProjectTool(uuid: string, slug: string): Promise<{ status: string }> {
+    return this.request(`/projects/${uuid}/tools/${slug}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getToolSource(uuid: string, slug: string): Promise<{ main_py: string; requirements_txt: string }> {
+    return this.request(`/projects/${uuid}/tools/${slug}/source`);
+  }
+
+  async updateToolSource(uuid: string, slug: string, main_py: string, requirements_txt?: string): Promise<{ status: string }> {
+    return this.request(`/projects/${uuid}/tools/${slug}/source`, {
+      method: 'PUT',
+      body: JSON.stringify({ main_py, requirements_txt }),
+    });
+  }
+
+  // Agent Preview (AI-powered)
+  async previewAgent(data: { name: string; goal: string; uuid?: string }): Promise<AgentPreview> {
+    return this.request('/projects/preview', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, 120000);
+  }
+}
+
+// ============================================
+// TOOLS SERVICE
+// ============================================
+
+class ToolsService {
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {},
+    timeoutMs: number = 60000
+  ): Promise<T> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(`${API_BASE}${endpoint}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+        signal: controller.signal,
+        ...options,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Erro desconhecido' }));
+        throw new Error(error.detail || 'Erro na requisição');
+      }
+
+      return response.json();
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new Error('Timeout: a requisição demorou muito');
+      }
+      throw err;
+    }
+  }
+
+  // Official Tools Library
+  async listOfficialTools(category?: string): Promise<OfficialTool[]> {
+    const params = category ? `?category=${category}` : '';
+    return this.request(`/tools/official${params}`);
+  }
+
+  async getOfficialTool(slug: string): Promise<OfficialTool> {
+    return this.request(`/tools/official/${slug}`);
+  }
+
+  async generateOfficialToolCode(slug: string): Promise<GeneratedTool> {
+    return this.request(`/tools/official/${slug}/generate`, {
+      method: 'POST',
+    }, 120000);
+  }
+
+  // Tool Generation
+  async generateTool(data: {
+    documentation?: string;
+    url?: string;
+    tool_name?: string;
+    tool_description?: string;
+  }): Promise<GeneratedTool> {
+    return this.request('/tools/generate', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, 120000);
+  }
+
+  async improveTool(current_code: string, feedback: string): Promise<{ main_py: string; changes: string[] }> {
+    return this.request('/tools/improve', {
+      method: 'POST',
+      body: JSON.stringify({ current_code, feedback }),
+    }, 120000);
+  }
+
+  // Categories
+  async listCategories(): Promise<Record<string, { name: string; count: number; tools: string[] }>> {
+    return this.request('/tools/categories');
+  }
+}
+
+export const projectsApi = new ProjectsService();
+export const toolsApi = new ToolsService();
+
+// ============================================
+// WENI CLOUD INTEGRATION
+// ============================================
+
+export interface WeniOrganization {
+  name: string;
+  uuid: string;
+}
+
+export interface WeniProject {
+  name: string;
+  uuid: string;
+}
+
+export interface WeniOrgWithProjects {
+  org_name: string;
+  org_uuid: string;
+  projects: WeniProject[];
+  error?: string | null;
+}
+
+class WeniService {
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {},
+    timeoutMs: number = 60000
+  ): Promise<T> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(`${API_BASE}${endpoint}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+        signal: controller.signal,
+        ...options,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Erro desconhecido' }));
+        throw new Error(error.detail || 'Erro na requisição');
+      }
+
+      return response.json();
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new Error('Timeout: a requisição demorou muito');
+      }
+      throw err;
+    }
+  }
+
+  // Status
+  async getStatus(): Promise<{ connected: boolean; has_token: boolean }> {
+    return this.request('/weni/status');
+  }
+
+  // Auth
+  async getLoginUrl(redirectUri?: string): Promise<{ login_url: string; redirect_uri: string }> {
+    const params = redirectUri ? `?redirect_uri=${encodeURIComponent(redirectUri)}` : '';
+    return this.request(`/weni/login-url${params}`);
+  }
+
+  async startAuth(): Promise<{ login_url: string; callback_started: boolean }> {
+    return this.request('/weni/start-auth', {
+      method: 'POST',
+    });
+  }
+
+  async waitAuth(): Promise<{ success: boolean; connected: boolean }> {
+    // Timeout maior para esperar o usuário fazer login (5 minutos)
+    return this.request('/weni/wait-auth', {}, 310000);
+  }
+
+  async exchangeToken(code: string, redirectUri?: string): Promise<{ success: boolean; message: string }> {
+    return this.request('/weni/exchange-token', {
+      method: 'POST',
+      body: JSON.stringify({ code, redirect_uri: redirectUri }),
+    });
+  }
+
+  async logout(): Promise<{ success: boolean; message: string }> {
+    return this.request('/weni/logout', {
+      method: 'POST',
+    });
+  }
+
+  // Projects
+  async listAllProjects(): Promise<WeniOrgWithProjects[]> {
+    return this.request('/weni/projects', {}, 120000);
+  }
+
+  async listOrganizations(): Promise<{ results: WeniOrganization[]; next?: string }> {
+    return this.request('/weni/organizations');
+  }
+
+  async listProjects(orgUuid: string): Promise<{ results: WeniProject[]; next?: string }> {
+    return this.request(`/weni/organizations/${orgUuid}/projects`);
+  }
+}
+
+export const weniApi = new WeniService();
 
 // ============================================
 // ADMIN SERVICE (com autenticação)

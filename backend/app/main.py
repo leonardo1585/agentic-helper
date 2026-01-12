@@ -3,18 +3,51 @@ GTH - Git Helper Tool
 Aplicação principal FastAPI.
 """
 from pathlib import Path
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from .core import settings
-from .routers import config_router, repositories_router, analysis_router, search_router, prompts_router, admin_router
+from .routers import (
+    config_router, 
+    repositories_router, 
+    analysis_router, 
+    search_router, 
+    prompts_router, 
+    admin_router,
+    projects_router,
+    tools_router,
+    weni_router,
+)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Gerencia o ciclo de vida da aplicação."""
+    # === STARTUP ===
+    print("🚀 Iniciando GTH...")
+    
+    # Pré-carrega modelo de embeddings em background (não bloqueia)
+    try:
+        from .services.vector_service import preload_embedding_model, get_model_status
+        preload_embedding_model()
+        print("📥 Modelo de embeddings sendo carregado em background...")
+    except Exception as e:
+        print(f"⚠️ Aviso: Não foi possível iniciar pré-carregamento do modelo: {e}")
+    
+    yield  # App está rodando
+    
+    # === SHUTDOWN ===
+    print("👋 Encerrando GTH...")
+
 
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     description="Ferramenta para análise de repositórios e geração de base de conhecimento com IA",
+    lifespan=lifespan,
 )
 
 # CORS para permitir conexões do frontend
@@ -39,6 +72,9 @@ app.include_router(analysis_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
 app.include_router(prompts_router, prefix="/api")
 app.include_router(admin_router, prefix="/api")
+app.include_router(projects_router, prefix="/api")
+app.include_router(tools_router, prefix="/api")
+app.include_router(weni_router, prefix="/api")
 
 
 # Serve frontend estático se existir o build
@@ -88,4 +124,20 @@ else:
 async def health():
     """Health check."""
     return {"status": "healthy"}
+
+
+@app.get("/api/system/status")
+async def system_status():
+    """Status detalhado do sistema."""
+    try:
+        from .services.vector_service import get_model_status
+        model_status = get_model_status()
+    except Exception:
+        model_status = {"loaded": False, "loading": False, "error": "Não disponível"}
+    
+    return {
+        "status": "healthy",
+        "version": settings.APP_VERSION,
+        "embedding_model": model_status
+    }
 

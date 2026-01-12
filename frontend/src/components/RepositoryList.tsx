@@ -14,10 +14,18 @@ import {
   Clock,
   CheckCircle,
   AlertCircle,
-  Activity
+  Activity,
+  Layers,
+  Trash2,
+  GitCompare,
+  Bug,
+  ChevronDown
 } from 'lucide-react';
 import { useAppStore } from '../stores/appStore';
 import { MultiFolderSelectModal } from './MultiFolderSelectModal';
+import { UpdatesDiffPanel } from './UpdatesDiffPanel';
+import { DiagnosticPanel } from './DiagnosticPanel';
+import { api, VectorStats } from '../services/api';
 
 type StatusFilter = 'all' | 'analyzing' | 'completed' | 'error' | 'pending';
 
@@ -28,10 +36,12 @@ export function RepositoryList() {
     isLoading,
     status,
     analysisProgress,
+    knowledgeBases,
     fetchRepositories, 
     toggleRepoSelection,
     clearSelection,
-    analyzeMultipleFolders
+    analyzeMultipleFolders,
+    fetchKnowledgeBases
   } = useAppStore();
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -39,6 +49,16 @@ export function RepositoryList() {
   const [showPublic, setShowPublic] = useState(true);
   const [showFolderModal, setShowFolderModal] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  
+  // Estado para indexação
+  const [isIndexing, setIsIndexing] = useState(false);
+  const [vectorStats, setVectorStats] = useState<VectorStats | null>(null);
+  const [indexMessage, setIndexMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  
+  // Estado para Atualizações & Diagnóstico
+  const [selectedAgent, setSelectedAgent] = useState<string>('');
+  const [showUpdatesPanel, setShowUpdatesPanel] = useState(false);
+  const [showDiagnosticPanel, setShowDiagnosticPanel] = useState(false);
   
   // Função para obter o status de um repositório
   const getRepoStatus = (repoName: string): string | null => {
@@ -75,6 +95,61 @@ export function RepositoryList() {
       fetchRepositories();
     }
   }, [status?.github_configured, fetchRepositories]);
+  
+  // Carrega stats de indexação e KBs
+  useEffect(() => {
+    loadVectorStats();
+    fetchKnowledgeBases();
+  }, [fetchKnowledgeBases]);
+  
+  const loadVectorStats = async () => {
+    try {
+      const stats = await api.getVectorStats();
+      setVectorStats(stats);
+    } catch (err) {
+      console.error('Erro ao carregar stats:', err);
+    }
+  };
+  
+  const handleIndexAll = async () => {
+    setIsIndexing(true);
+    setIndexMessage(null);
+    
+    try {
+      const result = await api.indexAllAgents();
+      await loadVectorStats();
+      setIndexMessage({
+        type: 'success',
+        text: `✓ ${result.success} agente(s) indexado(s)${result.failed > 0 ? `, ${result.failed} falha(s)` : ''}`
+      });
+      
+      // Limpa mensagem após 5 segundos
+      setTimeout(() => setIndexMessage(null), 5000);
+    } catch (err) {
+      setIndexMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Erro ao indexar'
+      });
+    } finally {
+      setIsIndexing(false);
+    }
+  };
+  
+  const handleClearIndex = async () => {
+    if (!confirm('Limpar índice? Você precisará reindexar.')) return;
+    
+    try {
+      await api.clearVectorIndex();
+      await loadVectorStats();
+      setIndexMessage({ type: 'success', text: 'Índice limpo com sucesso' });
+      setTimeout(() => setIndexMessage(null), 3000);
+    } catch (err) {
+      setIndexMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Erro ao limpar'
+      });
+    }
+  };
   
   const filteredRepos = useMemo(() => {
     return repositories.filter(repo => {
@@ -165,6 +240,220 @@ export function RepositoryList() {
           )}
         </div>
       </div>
+      
+      {/* Indexação Card */}
+      {knowledgeBases.length > 0 && (
+        <div className="card bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
+                <Layers className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h3 className="font-medium text-gray-900">Indexação para Busca</h3>
+                <p className="text-sm text-gray-500">
+                  {vectorStats 
+                    ? `${vectorStats.total_agents} de ${knowledgeBases.length} agentes indexados`
+                    : `${knowledgeBases.length} agentes disponíveis para indexar`
+                  }
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              {vectorStats && vectorStats.total_agents > 0 && (
+                <button
+                  onClick={handleClearIndex}
+                  className="btn-secondary flex items-center gap-2 text-red-600 hover:bg-red-50"
+                  title="Limpar índice"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+              
+              <button
+                onClick={handleIndexAll}
+                disabled={isIndexing || knowledgeBases.length === 0}
+                className="btn-primary flex items-center gap-2 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600"
+              >
+                {isIndexing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Indexando...
+                  </>
+                ) : (
+                  <>
+                    <Layers className="w-4 h-4" />
+                    {vectorStats && vectorStats.total_agents === knowledgeBases.length 
+                      ? 'Reindexar' 
+                      : 'Indexar Agentes'
+                    }
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+          
+          {/* Message */}
+          <AnimatePresence>
+            {indexMessage && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className={`mt-3 p-2 rounded-lg text-sm ${
+                  indexMessage.type === 'success' 
+                    ? 'bg-emerald-100 text-emerald-700' 
+                    : 'bg-red-100 text-red-700'
+                }`}
+              >
+                {indexMessage.text}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
+      
+      {/* Atualizações & Diagnóstico Card */}
+      {knowledgeBases.length > 0 && (
+        <div className="card bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
+                <GitCompare className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h3 className="font-medium text-gray-900">Atualizações & Diagnóstico</h3>
+                <p className="text-sm text-gray-500">
+                  Veja mudanças recentes e diagnostique problemas
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Seletor de Agente */}
+              <div className="relative">
+                <select
+                  value={selectedAgent}
+                  onChange={(e) => setSelectedAgent(e.target.value)}
+                  className="appearance-none px-4 py-2 pr-8 rounded-lg border border-gray-300 bg-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 min-w-[250px]"
+                >
+                  <option value="">Selecione um agente...</option>
+                  {knowledgeBases.map((kb) => (
+                    <option key={kb} value={kb}>
+                      {kb.split('/').slice(-1)[0]} ({kb.split('/').slice(0, 2).join('/')})
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              </div>
+              
+              {/* Botões */}
+              <button
+                onClick={() => {
+                  if (selectedAgent) setShowUpdatesPanel(true);
+                }}
+                disabled={!selectedAgent}
+                className="btn-secondary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <GitCompare className="w-4 h-4" />
+                Atualizações
+              </button>
+              
+              <button
+                onClick={() => {
+                  if (selectedAgent) setShowDiagnosticPanel(true);
+                }}
+                disabled={!selectedAgent}
+                className="btn-secondary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Bug className="w-4 h-4" />
+                Diagnóstico
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Modal de Atualizações */}
+      <AnimatePresence>
+        {showUpdatesPanel && selectedAgent && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => setShowUpdatesPanel(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[#1a1a2e] rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between p-4 border-b border-gray-700">
+                <div className="flex items-center gap-3">
+                  <GitCompare className="w-5 h-5 text-[#00DED2]" />
+                  <div>
+                    <h2 className="text-lg font-semibold text-white">Histórico de Atualizações</h2>
+                    <p className="text-sm text-gray-400">{selectedAgent}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowUpdatesPanel(false)}
+                  className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-400" />
+                </button>
+              </div>
+              <div className="p-4 overflow-y-auto max-h-[calc(90vh-80px)] min-h-[300px]">
+                <UpdatesDiffPanel repositoryName={selectedAgent} />
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      
+      {/* Modal de Diagnóstico */}
+      <AnimatePresence>
+        {showDiagnosticPanel && selectedAgent && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => setShowDiagnosticPanel(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[#1a1a2e] rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between p-4 border-b border-gray-700">
+                <div className="flex items-center gap-3">
+                  <Bug className="w-5 h-5 text-orange-400" />
+                  <div>
+                    <h2 className="text-lg font-semibold text-white">Diagnóstico de Problema</h2>
+                    <p className="text-sm text-gray-400">{selectedAgent}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowDiagnosticPanel(false)}
+                  className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-400" />
+                </button>
+              </div>
+              <div className="p-4 overflow-y-auto max-h-[calc(90vh-80px)]">
+                <DiagnosticPanel repositoryName={selectedAgent} />
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       
       {/* Search and Filters */}
       <div className="flex flex-col gap-3">

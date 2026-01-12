@@ -1,16 +1,15 @@
 import { motion } from 'framer-motion';
 import { 
   Database, 
-  MessageSquare,
   Settings,
   Sparkles,
   Search,
-  Layers,
   Bug,
-  FolderGit2
+  FolderGit2,
+  Bot
 } from 'lucide-react';
 
-type TabType = 'repos' | 'knowledge' | 'chat' | 'finder' | 'index' | 'debug';
+type TabType = 'agents' | 'repos' | 'knowledge' | 'finder' | 'debug';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -31,29 +30,28 @@ interface MenuSection {
 export function Sidebar({ activeTab, onTabChange, onOpenSettings }: SidebarProps) {
   const menuSections: MenuSection[] = [
     {
-      title: 'Repositórios',
+      title: 'Principal',
       items: [
-        { id: 'repos', label: 'Gerenciar', icon: FolderGit2, description: 'Listar e analisar' },
+        { id: 'agents', label: 'Agentes', icon: Bot, description: 'Gerenciar agentes e tools' },
       ]
     },
     {
-      title: 'Agentes',
+      title: 'Repositórios',
       items: [
+        { id: 'repos', label: 'Gerenciar', icon: FolderGit2, description: 'Análise, Updates, Diagnóstico' },
         { id: 'finder', label: 'Buscar Agente', icon: Search, description: 'Encontrar existentes' },
-        { id: 'index', label: 'Indexação', icon: Layers, description: 'Indexar para busca' },
       ]
     },
     {
       title: 'Conhecimento',
       items: [
         { id: 'knowledge', label: 'Base de Conhecimento', icon: Database, description: 'Visualizar KBs' },
-        { id: 'chat', label: 'Chat', icon: MessageSquare, description: 'Tirar dúvidas' },
       ]
     },
     {
-      title: 'Ferramentas',
+      title: 'Análise',
       items: [
-        { id: 'debug', label: 'Debug', icon: Bug, description: 'Investigar problemas' },
+        { id: 'debug', label: 'Debug', icon: Bug, description: 'Analisar código atual' },
       ]
     }
   ];
