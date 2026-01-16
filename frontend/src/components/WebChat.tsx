@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Send, 
-  Bot, 
-  User, 
-  Loader2, 
+import {
+  Send,
+  Bot,
+  User,
+  Loader2,
   X,
   MessageCircle,
   Sparkles,
@@ -19,17 +19,15 @@ interface WebChatProps {
 }
 
 export function WebChat({ contextKB }: WebChatProps) {
-  const { 
-    messages, 
-    isChatLoading, 
+  const {
+    messages,
+    isChatLoading,
     status,
-    chatMode,
     useRag,
-    sendMessageWithContext, 
-    setUseRag,
-    clearChat 
+    sendMessageWithContext,
+    setUseRag
   } = useAppStore();
-  
+
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [input, setInput] = useState('');
@@ -38,47 +36,47 @@ export function WebChat({ contextKB }: WebChatProps) {
   const shouldAutoScrollRef = useRef(true);
   const lastScrollTopRef = useRef(0);
   const isUserScrollingRef = useRef(false);
-  
+
   // Scroll só quando permitido
   useEffect(() => {
     if (shouldAutoScrollRef.current && !isUserScrollingRef.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages]);
-  
+
   // Detecta scroll manual do usuário
   const handleScroll = () => {
     if (!messagesContainerRef.current) return;
-    
+
     const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
     const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
-    
+
     // Detecta se usuário scrollou para CIMA (scrollTop diminuiu ou não está no fim)
     if (scrollTop < lastScrollTopRef.current - 10 || !isAtBottom) {
       // Usuário scrollou para cima - PARA o auto-scroll
       isUserScrollingRef.current = true;
       shouldAutoScrollRef.current = false;
     }
-    
+
     // Se chegou no fim, reativa
     if (isAtBottom) {
       isUserScrollingRef.current = false;
       shouldAutoScrollRef.current = true;
     }
-    
+
     lastScrollTopRef.current = scrollTop;
   };
-  
+
   // Auto-ativar RAG quando há uma KB selecionada
   useEffect(() => {
     if (contextKB && !useRag) {
       setUseRag(true);
     }
   }, [contextKB, useRag, setUseRag]);
-  
+
   const handleSend = async () => {
     if (!input.trim() || isChatLoading) return;
-    
+
     const message = input.trim();
     setInput('');
     // Reseta scroll para acompanhar nova mensagem
@@ -86,7 +84,7 @@ export function WebChat({ contextKB }: WebChatProps) {
     shouldAutoScrollRef.current = true;
     await sendMessageWithContext(message, contextKB);
   };
-  
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -100,11 +98,11 @@ export function WebChat({ contextKB }: WebChatProps) {
       setIsExpanded(false);
     }
   };
-  
+
   if (!status?.ai_configured) {
     return null;
   }
-  
+
   return (
     <>
       {/* Chat Window */}
@@ -115,11 +113,10 @@ export function WebChat({ contextKB }: WebChatProps) {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className={`fixed z-50 bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden ${
-              isExpanded 
-                ? 'bottom-4 right-4 left-4 top-4 md:left-auto md:top-auto md:w-[600px] md:h-[700px]' 
+            className={`fixed z-50 bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden ${isExpanded
+                ? 'bottom-4 right-4 left-4 top-4 md:left-auto md:top-auto md:w-[600px] md:h-[700px]'
                 : 'bottom-24 right-6 w-[380px] h-[520px]'
-            }`}
+              }`}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-[#00DED2] to-[#00b8ae] text-white">
@@ -154,7 +151,7 @@ export function WebChat({ contextKB }: WebChatProps) {
                 </button>
               </div>
             </div>
-            
+
             {/* Disclaimer */}
             <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
               <p className="text-xs text-gray-500 text-center flex items-center justify-center gap-1">
@@ -162,9 +159,9 @@ export function WebChat({ contextKB }: WebChatProps) {
                 Este assistente usa IA para responder você.
               </p>
             </div>
-            
+
             {/* Messages */}
-            <div 
+            <div
               ref={messagesContainerRef}
               onScroll={handleScroll}
               onWheel={(e) => {
@@ -185,24 +182,24 @@ export function WebChat({ contextKB }: WebChatProps) {
                     Olá! Como posso ajudar?
                   </h3>
                   <p className="text-xs text-gray-500 max-w-[250px] mx-auto mb-4">
-                    {contextKB 
-                      ? `Pergunte sobre o agente "${contextKB.split('/').pop()}"` 
+                    {contextKB
+                      ? `Pergunte sobre o agente "${contextKB.split('/').pop()}"`
                       : 'Pergunte sobre APIs, funcionalidades, fluxos e mais.'}
                   </p>
-                  
+
                   {/* Quick suggestions */}
                   <div className="flex flex-wrap justify-center gap-2 mt-4">
-                    <QuickButton 
-                      text="O que esse agente faz?" 
-                      onClick={setInput} 
+                    <QuickButton
+                      text="O que esse agente faz?"
+                      onClick={setInput}
                     />
-                    <QuickButton 
-                      text="Quais APIs ele usa?" 
-                      onClick={setInput} 
+                    <QuickButton
+                      text="Quais APIs ele usa?"
+                      onClick={setInput}
                     />
-                    <QuickButton 
-                      text="Como funciona o fluxo?" 
-                      onClick={setInput} 
+                    <QuickButton
+                      text="Como funciona o fluxo?"
+                      onClick={setInput}
                     />
                   </div>
                 </div>
@@ -220,12 +217,11 @@ export function WebChat({ contextKB }: WebChatProps) {
                           <Bot className="w-4 h-4 text-[#00DED2]" />
                         </div>
                       )}
-                      
-                      <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${
-                        message.role === 'user'
+
+                      <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${message.role === 'user'
                           ? 'bg-gray-900 text-white rounded-br-md'
                           : 'bg-gray-100 text-gray-800 rounded-bl-md'
-                      }`}>
+                        }`}>
                         {message.role === 'assistant' ? (
                           message.content ? (
                             <div className="markdown-content text-sm prose prose-sm max-w-none">
@@ -242,7 +238,7 @@ export function WebChat({ contextKB }: WebChatProps) {
                           <p className="text-sm">{message.content}</p>
                         )}
                       </div>
-                      
+
                       {message.role === 'user' && (
                         <div className="w-7 h-7 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
                           <User className="w-4 h-4 text-gray-600" />
@@ -252,11 +248,11 @@ export function WebChat({ contextKB }: WebChatProps) {
                   ))}
                 </>
               )}
-              
-              
+
+
               <div ref={messagesEndRef} />
             </div>
-            
+
             {/* Input */}
             <div className="p-4 border-t border-gray-100">
               <div className="flex items-center gap-2 bg-gray-50 rounded-full px-4 py-2 border border-gray-200 focus-within:border-[#00DED2] focus-within:ring-2 focus-within:ring-[#00DED2]/20 transition-all">
@@ -280,7 +276,7 @@ export function WebChat({ contextKB }: WebChatProps) {
                   )}
                 </button>
               </div>
-              
+
               {/* Footer */}
               <p className="text-[10px] text-gray-400 text-center mt-2">
                 Seus dados são tratados com segurança.
@@ -289,17 +285,16 @@ export function WebChat({ contextKB }: WebChatProps) {
           </motion.div>
         )}
       </AnimatePresence>
-      
+
       {/* Floating Button */}
       <motion.button
         onClick={toggleOpen}
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
-        className={`fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-colors ${
-          isOpen 
-            ? 'bg-gray-900 text-white' 
+        className={`fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-colors ${isOpen
+            ? 'bg-gray-900 text-white'
             : 'bg-gradient-to-r from-[#00DED2] to-[#00b8ae] text-white'
-        }`}
+          }`}
       >
         <AnimatePresence mode="wait">
           {isOpen ? (
@@ -323,7 +318,7 @@ export function WebChat({ contextKB }: WebChatProps) {
           )}
         </AnimatePresence>
       </motion.button>
-      
+
       {/* Pulse animation when closed */}
       {!isOpen && (
         <div className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-[#00DED2]/30 animate-ping" />
