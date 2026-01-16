@@ -1,2 +1,0 @@
-# GTH Backend
-

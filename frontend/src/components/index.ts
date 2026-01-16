@@ -1,7 +1,7 @@
 // v3 - Suporte a agentes customizados
 export { Sidebar } from './Sidebar';
 export { SettingsModal } from './SettingsModal';
-export { AgentFinder } from './AgentFinder';
+export { KnowledgeBasePanel } from './KnowledgeBasePanel';
 export { DebugPanel } from './DebugPanel';
 export { DiagnosticPanel } from './DiagnosticPanel';
 export { UpdatesDiffPanel } from './UpdatesDiffPanel';

@@ -323,6 +323,32 @@ export interface CreateTicketRequest {
   created_by?: string;
 }
 
+// Gerenciador de token Weni Cloud
+const WENI_TOKEN_KEY = 'weni_access_token';
+
+export const weniAuth = {
+  getToken: (): string | null => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem(WENI_TOKEN_KEY);
+  },
+  
+  setToken: (token: string) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(WENI_TOKEN_KEY, token);
+    }
+  },
+  
+  clearToken: () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(WENI_TOKEN_KEY);
+    }
+  },
+  
+  isAuthenticated: (): boolean => {
+    return !!weniAuth.getToken();
+  }
+};
+
 class ApiService {
   private async request<T>(
     endpoint: string,
@@ -332,12 +358,20 @@ class ApiService {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
+    // Adiciona token de autenticação se disponível
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(options.headers as Record<string, string>),
+    };
+    
+    const token = weniAuth.getToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
     try {
       const response = await fetch(`${API_BASE}${endpoint}`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
+        headers,
         signal: controller.signal,
         ...options,
       });
@@ -346,6 +380,13 @@ class ApiService {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ detail: 'Erro desconhecido' }));
+        
+        // Se 401, limpa token e indica que precisa fazer login
+        if (response.status === 401) {
+          weniAuth.clearToken();
+          throw new Error(error.login_required ? 'LOGIN_REQUIRED' : error.detail || 'Não autenticado');
+        }
+        
         throw new Error(error.detail || 'Erro na requisição');
       }
 
@@ -1475,9 +1516,16 @@ class WeniService {
     });
   }
 
-  async waitAuth(): Promise<{ success: boolean; connected: boolean }> {
+  async waitAuth(): Promise<{ success: boolean; connected: boolean; access_token?: string }> {
     // Timeout maior para esperar o usuário fazer login (5 minutos)
-    return this.request('/weni/wait-auth', {}, 310000);
+    const result = await this.request<{ success: boolean; connected: boolean; access_token?: string }>('/weni/wait-auth', {}, 310000);
+    
+    // Salva o token se recebido
+    if (result.access_token) {
+      weniAuth.setToken(result.access_token);
+    }
+    
+    return result;
   }
 
   async exchangeToken(code: string, redirectUri?: string): Promise<{ success: boolean; message: string }> {
@@ -1488,9 +1536,17 @@ class WeniService {
   }
 
   async logout(): Promise<{ success: boolean; message: string }> {
+    // Limpa token local
+    weniAuth.clearToken();
+    
     return this.request('/weni/logout', {
       method: 'POST',
     });
+  }
+  
+  // Verifica se está autenticado localmente
+  isAuthenticated(): boolean {
+    return weniAuth.isAuthenticated();
   }
 
   // Projects

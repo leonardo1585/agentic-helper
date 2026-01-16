@@ -7,8 +7,17 @@ import aiohttp
 from typing import Optional, Dict, Any
 from fastapi import Request, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import jwt
-from jwt import PyJWKClient
+
+# PyJWT é opcional - se não instalado, usa apenas validação via userinfo
+try:
+    import jwt
+    from jwt import PyJWKClient
+    JWT_AVAILABLE = True
+except ImportError:
+    jwt = None
+    PyJWKClient = None
+    JWT_AVAILABLE = False
+    print("⚠️ PyJWT não instalado. Validação de token será feita apenas via userinfo endpoint.")
 
 from ..core import settings
 
@@ -87,22 +96,33 @@ class KeycloakAuth:
             if user_info:
                 return user_info
             
-            # Método 2: Validar JWT localmente (fallback)
-            return await self._validate_jwt_locally(token)
+            # Método 2: Validar JWT localmente (fallback) - requer PyJWT
+            if JWT_AVAILABLE:
+                return await self._validate_jwt_locally(token)
             
-        except jwt.ExpiredSignatureError:
+            # Se chegou aqui, não conseguiu validar
             raise HTTPException(
                 status_code=401,
-                detail="Token expirado",
+                detail="Não foi possível validar o token. Verifique sua conexão com Weni Cloud.",
                 headers={"WWW-Authenticate": "Bearer"}
             )
-        except jwt.InvalidTokenError as e:
-            raise HTTPException(
-                status_code=401,
-                detail=f"Token inválido: {str(e)}",
-                headers={"WWW-Authenticate": "Bearer"}
-            )
+            
+        except HTTPException:
+            raise
         except Exception as e:
+            if JWT_AVAILABLE and jwt:
+                if isinstance(e, jwt.ExpiredSignatureError):
+                    raise HTTPException(
+                        status_code=401,
+                        detail="Token expirado",
+                        headers={"WWW-Authenticate": "Bearer"}
+                    )
+                if isinstance(e, jwt.InvalidTokenError):
+                    raise HTTPException(
+                        status_code=401,
+                        detail=f"Token inválido: {str(e)}",
+                        headers={"WWW-Authenticate": "Bearer"}
+                    )
             raise HTTPException(
                 status_code=401,
                 detail=f"Erro na validação do token: {str(e)}",
@@ -124,9 +144,13 @@ class KeycloakAuth:
     
     async def _validate_jwt_locally(self, token: str) -> Dict[str, Any]:
         """Valida JWT localmente usando a chave pública do Keycloak."""
+        if not JWT_AVAILABLE or not jwt:
+            raise Exception("PyJWT não disponível para validação local")
+        
         try:
             # Decodifica sem verificar para pegar o header
             unverified = jwt.decode(token, options={"verify_signature": False})
+            _ = unverified  # Silencia warning
             
             # Usa PyJWKClient para obter a chave correta
             if not self._jwks_client:

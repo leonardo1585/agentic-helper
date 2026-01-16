@@ -3,6 +3,7 @@
 dist/
 *.dmg
 *.app
+build/
 
 # Python
 __pycache__/
@@ -18,7 +19,9 @@ node_modules/
 
 # Data/Cache
 chroma_db/
+vector_db/
 repositories/
+.DS_Store
 
 # Config files (contain tokens)
 *.json
@@ -29,3 +32,8 @@ repositories/
 !tailwind.config.js
 !postcss.config.js
 !vite.config.ts
+!manifest.json
+!admin_auth.json
+# Allow example configs if needed, but for now blocking all json except frontend configs is safe-ish given the previous file.
+# Note: prompts.json was in the root list, might be config. app_config.json too.
+# The user's gitignore excluded all json, so I'll keep that but I'll add the new excludes.

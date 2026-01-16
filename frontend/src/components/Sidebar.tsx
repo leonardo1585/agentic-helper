@@ -2,13 +2,13 @@ import { motion } from 'framer-motion';
 import { 
   Settings,
   Sparkles,
-  Search,
   HelpCircle,
   Bug,
-  FolderGit2
+  FolderGit2,
+  Database
 } from 'lucide-react';
 
-type TabType = 'repos' | 'finder' | 'debug';
+type TabType = 'repos' | 'knowledge' | 'debug';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -26,8 +26,8 @@ interface MenuItem {
 export function Sidebar({ activeTab, onTabChange, onOpenSettings }: SidebarProps) {
   const menuItems: MenuItem[] = [
     { id: 'repos', label: 'Agentes', icon: FolderGit2, description: 'Diagnóstico e updates' },
-    { id: 'finder', label: 'Buscar Agente', icon: Search, description: 'Encontrar agentes existentes' },
-    { id: 'debug', label: 'Debug', icon: Bug, description: 'Tirar dúvidas sobre problemas' },
+    { id: 'knowledge', label: 'Conhecimento', icon: Database, description: 'Tirar dúvidas sobre agentes' },
+    { id: 'debug', label: 'Debug', icon: Bug, description: 'Analisar problemas específicos' },
   ];
 
   return (

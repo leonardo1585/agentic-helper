@@ -23,7 +23,6 @@ from ..models import (
 from ..core import settings
 from .ai_service import ai_service
 from .github_service import github_service
-from .metrics_service import metrics_service
 import time
 
 
@@ -389,20 +388,7 @@ class AgentService:
                 tech_start = time.time()
                 tech_data = await ai_service.generate_technical_kb(analysis_name, files)
                 tech_duration = int((time.time() - tech_start) * 1000)
-                
-                # Registra uso de tokens para a análise técnica
-                input_tokens, output_tokens = ai_service.last_tokens
-                if input_tokens > 0 or output_tokens > 0:
-                    metrics_service.record_token_usage(
-                        operation="technical_analysis",
-                        model=ai_service.model or "unknown",
-                        provider=str(ai_service.provider_type or "unknown"),
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                        duration_ms=tech_duration,
-                        repository=repo_full_name,
-                        folder=folder_path
-                    )
+                _ = tech_duration  # Métricas removidas na v3
                 
                 self.analysis_status[analysis_name] = AnalysisStatus(
                     repository=analysis_name,
@@ -592,20 +578,7 @@ class AgentService:
                 biz_start = time.time()
                 biz_data = await ai_service.generate_business_kb(analysis_name, files)
                 biz_duration = int((time.time() - biz_start) * 1000)
-                
-                # Registra uso de tokens para a análise de negócio
-                input_tokens, output_tokens = ai_service.last_tokens
-                if input_tokens > 0 or output_tokens > 0:
-                    metrics_service.record_token_usage(
-                        operation="business_analysis",
-                        model=ai_service.model or "unknown",
-                        provider=str(ai_service.provider_type or "unknown"),
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                        duration_ms=biz_duration,
-                        repository=repo_full_name,
-                        folder=folder_path
-                    )
+                _ = biz_duration  # Métricas removidas na v3
                 
                 self.analysis_status[analysis_name] = AnalysisStatus(
                     repository=analysis_name,
@@ -741,32 +714,9 @@ class AgentService:
             # Captura tokens usados na análise
             input_tokens, output_tokens = ai_service.total_tokens
             total_tokens = input_tokens + output_tokens
-            
-            # Calcula custo estimado
-            estimated_cost = metrics_service.calculate_cost(
-                provider=str(provider),
-                model=ai_service.model or "unknown",
-                input_tokens=input_tokens,
-                output_tokens=output_tokens
-            )
-            
-            metrics_service.record_analysis(
-                repository=repo_full_name,
-                folder=folder_path,
-                status="completed",
-                kb_types=kb_types,
-                model_used=ai_service.model or "unknown",
-                provider=str(provider),
-                duration_seconds=duration_seconds,
-                files_analyzed=files_count,
-                tokens_used=total_tokens,
-                estimated_cost=estimated_cost
-            )
-            print(f"✅ Análise registrada: {repo_full_name}/{folder_path} | Tokens: {total_tokens:,} | Custo: ${estimated_cost:.4f}")
+            print(f"✅ Análise concluída: {repo_full_name}/{folder_path} | Tokens: {total_tokens:,}")
         except Exception as e:
-            print(f"❌ Erro ao registrar métricas: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"⚠️ Erro ao capturar tokens: {e}")
         
         self.analysis_status[analysis_name] = AnalysisStatus(
             repository=analysis_name,
@@ -1030,18 +980,7 @@ Evite jargões técnicos. Explique como se fosse para alguém que não é da ár
         chat_start = time.time()
         response = await ai_service.generate(message, system_prompt)
         chat_duration = int((time.time() - chat_start) * 1000)
-        
-        # Registra uso de tokens para chat
-        input_tokens, output_tokens = ai_service.last_tokens
-        if input_tokens > 0 or output_tokens > 0:
-            metrics_service.record_token_usage(
-                operation="chat",
-                model=ai_service.model or "unknown",
-                provider=str(ai_service.provider_type or "unknown"),
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                duration_ms=chat_duration
-            )
+        _ = chat_duration  # Métricas removidas na v3
         
         return response
     
@@ -1537,18 +1476,7 @@ REGRAS:
 - Um agente só "atende" se tiver TODAS as funcionalidades pedidas
 - Explique claramente o racional da decisão""")
             search_duration = int((time.time() - search_start) * 1000)
-            
-            # Registra uso de tokens para busca de agentes
-            input_tokens, output_tokens = ai_service.last_tokens
-            if input_tokens > 0 or output_tokens > 0:
-                metrics_service.record_token_usage(
-                    operation="agent_search",
-                    model=ai_service.model or "unknown",
-                    provider=str(ai_service.provider_type or "unknown"),
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    duration_ms=search_duration
-                )
+            _ = search_duration  # Métricas removidas na v3
             
             import json
             # Tenta extrair JSON da resposta
@@ -1836,20 +1764,7 @@ Investigue e identifique a causa raiz do problema.
             # Para debug, sempre usa o máximo de tokens possível
             response = await ai_service.generate(investigation_prompt, system_prompt, force_max_tokens=True)
             debug_duration = int((time.time() - debug_start) * 1000)
-            
-            # Registra uso de tokens para debug
-            input_tokens, output_tokens = ai_service.last_tokens
-            if input_tokens > 0 or output_tokens > 0:
-                metrics_service.record_token_usage(
-                    operation="debug",
-                    model=ai_service.model or "unknown",
-                    provider=str(ai_service.provider_type or "unknown"),
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    duration_ms=debug_duration,
-                    repository=repository,
-                    folder=folder_path
-                )
+            _ = debug_duration  # Métricas removidas na v3
             
             # Tenta parsear JSON com múltiplas estratégias
             response_clean = response.strip()

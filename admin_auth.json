@@ -1,0 +1,19 @@
+{
+  "password_hash": "acab464d559df5dc991348140091e4dac58ef3a6530dcf27e09f86ca31342b12",
+  "sessions": {
+    "lS31ZUyPpXY4SlJrUIo2qetYWUtUp0dk6EsKle4PEz0": {
+      "created": "2026-01-05T20:54:43.495764",
+      "expires": "2026-01-06T20:54:43.495724"
+    },
+    "jGOxkmh2VmRAo4b5OOYzeXnxPzeBxMeC8vWKcwqh-bM": {
+      "created": "2026-01-06T20:16:40.644482",
+      "expires": "2026-01-07T20:16:40.644435"
+    },
+    "5ATB4MYmDPpgAluhUu6yYwII0whyWIEKFOLoopSVQRc": {
+      "created": "2026-01-09T14:15:31.384733",
+      "expires": "2026-01-10T14:15:31.384692"
+    }
+  },
+  "failed_attempts": {},
+  "lockout_until": null
+}

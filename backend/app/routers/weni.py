@@ -78,6 +78,7 @@ async def wait_for_auth():
     Aguarda a conclusão do OAuth e troca código por token.
     
     Deve ser chamado após start-auth enquanto o usuário faz login.
+    Retorna o access_token para o frontend armazenar.
     """
     try:
         result = await weni_service.wait_for_auth_code(timeout=300)
@@ -91,10 +92,11 @@ async def wait_for_auth():
         # Troca código por token
         code = result.get("code")
         if code:
-            await weni_service.exchange_code_for_token(code)
+            token_result = await weni_service.exchange_code_for_token(code)
             return {
                 "success": True,
-                "connected": weni_service.is_connected
+                "connected": weni_service.is_connected,
+                "access_token": token_result.get("access_token"),  # Token para o frontend
             }
         
         raise HTTPException(status_code=400, detail="No authorization code received")
