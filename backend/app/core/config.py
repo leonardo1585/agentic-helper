@@ -37,8 +37,11 @@ class Settings(BaseSettings):
     WENI_ACCOUNTS_URL: str = os.getenv("WENI_ACCOUNTS_URL", "https://accounts.weni.ai")
     WENI_CLIENT_ID: str = os.getenv("WENI_CLIENT_ID", "weni-cli")
     WENI_REALM: str = os.getenv("WENI_REALM", "weni")
-    # Redirect URI registrado no Keycloak - não altere a menos que tenha um novo registro
-    WENI_REDIRECT_URI: str = os.getenv("WENI_REDIRECT_URI", "http://localhost:50051/sso-callback")
+    # Redirect URI do OAuth (rota /api/weni/callback).
+    # Dev: http://localhost:8001/api/weni/callback
+    # Produção (ex: Render): https://seu-app.onrender.com/api/weni/callback
+    # Esta URL deve estar registrada nas Redirect URIs do cliente no Keycloak (Weni).
+    WENI_REDIRECT_URI: str = os.getenv("WENI_REDIRECT_URI", "http://localhost:8001/api/weni/callback")
     
     # Configurações de análise
     MAX_FILE_SIZE: int = 100000  # 100KB max por arquivo

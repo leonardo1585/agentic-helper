@@ -23,6 +23,7 @@ Este projeto já está configurado para ser implantado facilmente usando **Docke
     *   `OPENAI_API_KEY` (ou `GEMINI_API_KEY`, `ANTHROPIC_API_KEY`)
     *   `WENI_CLIENT_ID` (se estiver usando autenticação Weni)
     *   `WENI_REALM`
+    *   **`WENI_REDIRECT_URI`** = `https://SEU-SERVICO.onrender.com/api/weni/callback` (ex: `https://agentic-helper.onrender.com/api/weni/callback`) — obrigatório para login Weni em produção. Essa URL também precisa estar cadastrada nas **Redirect URIs** do cliente no Keycloak (Weni).
     *   Outras variáveis que você usa no `.env` local.
 
 7. Clique em **"Create Web Service"**.
@@ -43,3 +44,6 @@ Este projeto já está configurado para ser implantado facilmente usando **Docke
 
 - **Preciso configurar URL do Backend?**
   Não! O sistema foi configurado para que o Frontend e Backend rodem na mesma URL, simplificando tudo.
+
+- **Login Weni (OAuth) falha com "Port 50051" ou "callback server"?**
+  Em produção não é mais usado servidor na porta 50051. O callback OAuth usa a rota `/api/weni/callback`. Configure `WENI_REDIRECT_URI=https://seu-app.onrender.com/api/weni/callback` e registre essa URL nas Redirect URIs do cliente no Keycloak (Weni).

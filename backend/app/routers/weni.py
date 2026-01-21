@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from ..services.weni_service import weni_service
+from ..services.weni_service import weni_service, auth_code_queue
 from ..core import settings
 
 
@@ -56,19 +56,13 @@ async def start_auth():
     """
     Inicia o processo de autenticação OAuth.
     
-    1. Inicia servidor de callback na porta 50051
-    2. Retorna URL de login para o frontend abrir em nova janela
+    Retorna URL de login para o frontend abrir em nova janela.
+    O callback do Keycloak deve apontar para /api/weni/callback (WENI_REDIRECT_URI).
+    Em produção (ex: Render), use uma única porta; não é usado servidor em 50051.
     """
-    # Inicia servidor de callback
-    if not weni_service.start_callback_server():
-        raise HTTPException(
-            status_code=500, 
-            detail="Failed to start callback server. Port 50051 may be in use."
-        )
-    
     return {
         "login_url": weni_service.get_login_url(),
-        "callback_started": True
+        "callback_started": False
     }
 
 
@@ -142,11 +136,19 @@ def logout():
 @router.get("/callback")
 async def oauth_callback(code: str = Query(None), error: str = Query(None)):
     """
-    Callback do OAuth.
+    Callback do OAuth (Keycloak/Weni).
     
-    Esta rota recebe o código de autorização após o login.
-    Retorna uma página HTML que envia mensagem para a janela pai e fecha.
+    Recebe o código de autorização após o login e envia para a fila consumida por wait-auth.
+    Retorna uma página HTML que notifica a janela pai e fecha.
     """
+    # Envia para a fila para wait-auth receber (fluxo integrado, sem servidor em 50051)
+    if code:
+        auth_code_queue.put({"code": code})
+    elif error:
+        auth_code_queue.put({"error": error})
+    else:
+        auth_code_queue.put({"error": "No code received"})
+
     if error:
         return HTMLResponse(content=f"""
         <!DOCTYPE html>
@@ -155,7 +157,7 @@ async def oauth_callback(code: str = Query(None), error: str = Query(None)):
         <body>
             <script>
                 if (window.opener) {{
-                    window.opener.postMessage({{ type: 'weni-auth-error', error: '{error}' }}, '*');
+                    window.opener.postMessage({{ type: 'weni-auth-callback-error', error: '{error}' }}, '*');
                     window.close();
                 }} else {{
                     document.body.innerHTML = '<h1>Error: {error}</h1><p>You can close this window.</p>';
@@ -173,7 +175,7 @@ async def oauth_callback(code: str = Query(None), error: str = Query(None)):
         <body>
             <script>
                 if (window.opener) {
-                    window.opener.postMessage({ type: 'weni-auth-error', error: 'No code received' }, '*');
+                    window.opener.postMessage({ type: 'weni-auth-callback-error', error: 'No code received' }, '*');
                     window.close();
                 } else {
                     document.body.innerHTML = '<h1>Error: No code received</h1><p>You can close this window.</p>';
@@ -183,7 +185,7 @@ async def oauth_callback(code: str = Query(None), error: str = Query(None)):
         </html>
         """)
     
-    # Retorna página que envia o código para a janela pai
+    # Sucesso: retorna página que notifica a janela pai (compatível com WeniProjectSelector)
     return HTMLResponse(content=f"""
     <!DOCTYPE html>
     <html>
@@ -230,7 +232,7 @@ async def oauth_callback(code: str = Query(None), error: str = Query(None)):
         </div>
         <script>
             if (window.opener) {{
-                window.opener.postMessage({{ type: 'weni-auth-success', code: '{code}' }}, '*');
+                window.opener.postMessage({{ type: 'weni-auth-callback-success' }}, '*');
                 setTimeout(() => window.close(), 1500);
             }}
         </script>
