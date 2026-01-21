@@ -27,7 +27,8 @@ SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 DEFAULT_TIMEOUT = aiohttp.ClientTimeout(total=45, connect=15)
 
 # Arquivo para armazenar token
-CONFIG_FILE = Path(__file__).parent.parent.parent.parent / "app_config.json"
+# Em produção (Docker), fica em /app/app_config.json
+CONFIG_FILE = Path(__file__).parent.parent.parent / "app_config.json"
 
 # Fila para comunicação entre o servidor de callback e o serviço principal
 auth_code_queue: Queue = Queue()

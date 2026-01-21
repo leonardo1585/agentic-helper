@@ -15,7 +15,8 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     
     # Diretório base para repositórios
-    REPOS_BASE_DIR: Path = Path(__file__).parent.parent.parent.parent / "repositories"
+    # Em produção (Docker), fica em /app/repositories
+    REPOS_BASE_DIR: Path = Path(__file__).parent.parent.parent / "repositories"
     
     # GitHub
     GITHUB_TOKEN: Optional[str] = None

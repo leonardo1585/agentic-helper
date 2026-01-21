@@ -25,7 +25,8 @@ class PromptService:
     
     def __init__(self):
         # Usa o mesmo diretório base do projeto
-        base_dir = Path(__file__).parent.parent.parent.parent
+        # Em produção (Docker), fica em /app/
+        base_dir = Path(__file__).parent.parent.parent
         self.prompts_file = base_dir / "prompts.json"
         self._prompts: Dict[str, PromptConfig] = {}
         self._load_prompts()

@@ -13,7 +13,9 @@ class AuthService:
     """Serviço de autenticação simples para o admin."""
     
     def __init__(self):
-        base_dir = Path(__file__).parent.parent.parent.parent
+        # Em produção (Docker), fica em /app/admin_auth.json
+        # Localmente, fica em backend/admin_auth.json
+        base_dir = Path(__file__).parent.parent.parent  # backend/ ou /app/
         self.auth_file = base_dir / "admin_auth.json"
         self._config = self._load_config()
     
